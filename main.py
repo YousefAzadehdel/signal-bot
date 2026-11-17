@@ -88,6 +88,22 @@ Rules:
 - Keep numbers exactly as in source.
 """
 
+# --- اینو من اضافه کردم، فقط برای عکس خالی ---
+PROMPT_CHART_ONLY = """You are a TradingView chart reader. This image is a CHART ONLY, no text signal. Read price levels from RIGHT SIDE Y-axis.
+Green box on top = LONG, Red box on top = SHORT.
+HORIZONTAL LINES color DOES NOT MATTER - BLACK, BLUE, GREEN, YELLOW, ORANGE, PURPLE, WHITE all count.
+SIGNAL line = thick line + has PRICE LABEL BOX on right side. GRID line = thin, faint, NO label. IGNORE grid lines.
+Entry = dotted line price / current price. TPs = signal lines on profit side, closest to farthest. SL = opposite side red box edge.
+Example:
+XRP LONG
+Entry : 0.9440
+TP1 = 0.9594
+TP2 = 0.9771
+TP3 = 0.9945
+TP4 = 1.0129
+SL = 0.9260
+Rules: Copy numbers EXACTLY from right side labels. Never guess. 100% ENGLISH. No explanation."""
+
 def to_en_num(s):
     fa = "۰۱۲۳۴۵۶۷۸۹"
     ar = "٠١٢٣٤٥٦٧٨٩"
@@ -255,8 +271,11 @@ async def handle_photo(update, context):
             # اگه کپشن ناقص بود، کپشن + عکس رو با هم بده به جمینای
             raw = generate_with_fallback([PROMPT + f"\n\nCaption text (use this too):\n{caption}\n\nAlso read text inside image.", img_part])
         else:
-            # فقط عکس، بدون کپشن
+            # فقط عکس، بدون کپشن - اول با روش قبلی خودت
             raw = generate_with_fallback([PROMPT, img_part])
+            # اگه روش قبلی نتونست (مثل چارت خالی XRP) ، با پرامپت چارت خالی دوباره امتحان کن
+            if "Entry" not in raw or "TP" not in raw:
+                raw = generate_with_fallback([PROMPT_CHART_ONLY, img_part])
 
         clean = normalize_signal(raw)
         final = clean + FOOTER

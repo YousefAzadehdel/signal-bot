@@ -24,9 +24,11 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 GEMINI_KEY = os.environ.get("GEMINI_KEY", "")
 GROUP_ID = -1004453681781
 
-MODELS = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3-flash"]
+# --- درست شد: فقط مدل‌های واقعی ---
+MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
 
-client = genai.Client(api_key=GEMINI_KEY)
+# --- درست شد: api_version v1beta ---
+client = genai.Client(api_key=GEMINI_KEY, http_options={"api_version": "v1beta"})
 
 def generate_with_fallback(contents):
     last_error = None
@@ -88,7 +90,7 @@ Rules:
 - Keep numbers exactly as in source.
 """
 
-# --- اینو من اضافه کردم، فقط برای عکس خالی ---
+# --- فقط برای عکس خالی ---
 PROMPT_CHART_ONLY = """You are a TradingView chart reader. This image is a CHART ONLY, no text signal. Read price levels from RIGHT SIDE Y-axis.
 Green box on top = LONG, Red box on top = SHORT.
 HORIZONTAL LINES color DOES NOT MATTER - BLACK, BLUE, GREEN, YELLOW, ORANGE, PURPLE, WHITE all count.
@@ -260,7 +262,6 @@ async def handle_photo(update, context):
         img_part = genai.types.Part.from_bytes(data=bytes(photo_bytes), mime_type="image/jpeg")
 
         caption = update.message.caption or ""
-        # اگه کپشن فارسی بود و کامل بود، اول همونو سریع بخون
         if caption:
             fast = parse_farsi_signal(caption)
             if fast:
@@ -268,12 +269,9 @@ async def handle_photo(update, context):
                 await context.bot.send_message(chat_id=GROUP_ID, text=final)
                 await update.message.reply_text("فرستادم توی گروه ✅")
                 return
-            # اگه کپشن ناقص بود، کپشن + عکس رو با هم بده به جمینای
             raw = generate_with_fallback([PROMPT + f"\n\nCaption text (use this too):\n{caption}\n\nAlso read text inside image.", img_part])
         else:
-            # فقط عکس، بدون کپشن - اول با روش قبلی خودت
             raw = generate_with_fallback([PROMPT, img_part])
-            # اگه روش قبلی نتونست (مثل چارت خالی XRP) ، با پرامپت چارت خالی دوباره امتحان کن
             if "Entry" not in raw or "TP" not in raw:
                 raw = generate_with_fallback([PROMPT_CHART_ONLY, img_part])
 

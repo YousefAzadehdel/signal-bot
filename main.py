@@ -24,12 +24,14 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 GEMINI_KEY = os.environ.get("GEMINI_KEY", "")
 GROUP_ID = -1004453681781
 
-# --- سریع شد: فقط 2 مدل ---
+# --- فقط این آیدی ها میتونن به بات پیام بدن ---
+# YousefAzadeh
+ADMIN_IDS = [5386696088]
+
 MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
 
 client = genai.Client(api_key=GEMINI_KEY, http_options={"api_version": "v1beta"})
 
-# --- سریع شد: هر مدل فقط 1 بار تلاش، دیگه 2 بار تلاش نمیکنه ---
 def generate_with_fallback(contents):
     last_error = None
     for model in MODELS:
@@ -222,11 +224,18 @@ def parse_farsi_signal(text):
         print("farsi parse error:", e)
         return None
 
+def is_admin(update):
+    return update.effective_user and update.effective_user.id in ADMIN_IDS
+
 async def start(update, context):
+    if not is_admin(update):
+        return
     await update.message.reply_text("سلام! سیگنال رو بفرست تا بفرستم توی گروه ✅\nمتن، عکس، یا عکس + متن - هر 3 تاش رو می‌خونم")
 
 async def handle_text(update, context):
     if update.message.chat.type != "private":
+        return
+    if not is_admin(update):
         return
     await update.message.reply_text("دارم تحلیل میکنم... ⏳")
     try:
@@ -247,6 +256,8 @@ async def handle_text(update, context):
 async def handle_photo(update, context):
     if update.message.chat.type != "private":
         return
+    if not is_admin(update):
+        return
     await update.message.reply_text("دارم عکس رو میخونم... ⏳")
     try:
         photo = await update.message.photo[-1].get_file()
@@ -262,7 +273,6 @@ async def handle_photo(update, context):
                 return
             raw = generate_with_fallback([PROMPT + f"\n\nCaption text (use this too):\n{caption}\n\nAlso read text inside image.", img_part])
         else:
-            # عکس خالی - فقط 1 بار، فقط با پرامپت چارت - دیگه 2 بار نمیره
             raw = generate_with_fallback([PROMPT_CHART_ONLY, img_part])
         clean = normalize_signal(raw)
         final = clean + FOOTER

@@ -24,10 +24,9 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 GEMINI_KEY = os.environ.get("GEMINI_KEY", "")
 GROUP_ID = -1004453681781
 
-# --- درست شد: فقط مدل‌های واقعی ---
-MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+# --- درست شد: مدل‌های جدید 2026 ---
+MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-4-hydrogen"]
 
-# --- درست شد: api_version v1beta ---
 client = genai.Client(api_key=GEMINI_KEY, http_options={"api_version": "v1beta"})
 
 def generate_with_fallback(contents):
@@ -90,7 +89,6 @@ Rules:
 - Keep numbers exactly as in source.
 """
 
-# --- فقط برای عکس خالی ---
 PROMPT_CHART_ONLY = """You are a TradingView chart reader. This image is a CHART ONLY, no text signal. Read price levels from RIGHT SIDE Y-axis.
 Green box on top = LONG, Red box on top = SHORT.
 HORIZONTAL LINES color DOES NOT MATTER - BLACK, BLUE, GREEN, YELLOW, ORANGE, PURPLE, WHITE all count.
@@ -231,7 +229,6 @@ def parse_farsi_signal(text):
 async def start(update, context):
     await update.message.reply_text("سلام! سیگنال رو بفرست تا بفرستم توی گروه ✅\nمتن، عکس، یا عکس + متن - هر 3 تاش رو می‌خونم")
 
-# --- حالت 1: فقط متن ---
 async def handle_text(update, context):
     if update.message.chat.type != "private":
         return
@@ -251,7 +248,6 @@ async def handle_text(update, context):
     except Exception as e:
         await update.message.reply_text(f"خطا: {e}")
 
-# --- حالت 2 و 3: فقط عکس + عکس با کپشن ---
 async def handle_photo(update, context):
     if update.message.chat.type != "private":
         return
@@ -260,7 +256,6 @@ async def handle_photo(update, context):
         photo = await update.message.photo[-1].get_file()
         photo_bytes = await photo.download_as_bytearray()
         img_part = genai.types.Part.from_bytes(data=bytes(photo_bytes), mime_type="image/jpeg")
-
         caption = update.message.caption or ""
         if caption:
             fast = parse_farsi_signal(caption)
@@ -274,7 +269,6 @@ async def handle_photo(update, context):
             raw = generate_with_fallback([PROMPT, img_part])
             if "Entry" not in raw or "TP" not in raw:
                 raw = generate_with_fallback([PROMPT_CHART_ONLY, img_part])
-
         clean = normalize_signal(raw)
         final = clean + FOOTER
         await context.bot.send_message(chat_id=GROUP_ID, text=final)

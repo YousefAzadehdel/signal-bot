@@ -24,6 +24,7 @@ def run_flask():
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 GEMINI_KEY = os.environ.get("GEMINI_KEY", "")
 GROUP_ID = -1004453681781
+MODEL_NAME = "gemini-3.8-flash"
 
 client = genai.Client(api_key=GEMINI_KEY)
 
@@ -183,7 +184,7 @@ async def handle_text(update, context):
 
         # اگه نشد برو سراغ جمینای
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model=MODEL_NAME,
             contents=[PROMPT + "\n\nSignal text:\n" + update.message.text]
         )
         clean = translate_and_clean(response.text)
@@ -201,7 +202,7 @@ async def handle_photo(update, context):
         photo = await update.message.photo[-1].get_file()
         photo_bytes = await photo.download_as_bytearray()
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model=MODEL_NAME,
             contents=[PROMPT, genai.types.Part.from_bytes(data=bytes(photo_bytes), mime_type="image/jpeg")]
         )
         clean = translate_and_clean(response.text)

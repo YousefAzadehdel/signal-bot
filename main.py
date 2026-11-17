@@ -24,26 +24,22 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 GEMINI_KEY = os.environ.get("GEMINI_KEY", "")
 GROUP_ID = -1004453681781
 
-# --- درست شد: مدل‌های جدید 2026 ---
-MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-4-hydrogen"]
+# --- سریع شد: فقط 2 مدل ---
+MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
 
 client = genai.Client(api_key=GEMINI_KEY, http_options={"api_version": "v1beta"})
 
+# --- سریع شد: هر مدل فقط 1 بار تلاش، دیگه 2 بار تلاش نمیکنه ---
 def generate_with_fallback(contents):
     last_error = None
     for model in MODELS:
-        for attempt in range(2):
-            try:
-                resp = client.models.generate_content(model=model, contents=contents)
-                if resp.text:
-                    return resp.text
-            except Exception as e:
-                last_error = e
-                err = str(e)
-                if "503" in err or "404" in err or "UNAVAILABLE" in err or "NOT_FOUND" in err:
-                    break
-                time.sleep(2)
-                continue
+        try:
+            resp = client.models.generate_content(model=model, contents=contents)
+            if resp.text:
+                return resp.text
+        except Exception as e:
+            last_error = e
+            continue
     raise last_error if last_error else Exception("All Gemini models failed")
 
 FOOTER = """
@@ -51,11 +47,11 @@ FOOTER = """
 ---
 ⚠️ WARNING / هشدار / ПРЕДУПРЕЖДЕНИЕ
 
-🇮🇷 حد ضرر تمام معاملات باز شما نباید بیشتر از 3% باشد لطفا در انتخاب اهرم دقت فرمایید
+🇮🇷 حد ضرر تمام معاملات باز شما نباید بیشتر از 3% از کل دارایتان باشد. لطفا در انتخاب اهرم دقت فرمایید
 
-🇬🇧 The stop-loss of all your open trades should not be more than 3%. Please be careful when choosing leverage.
+🇬🇧 The stop-loss of all your open trades should not be more than 3% of your total capital. Please be careful when choosing leverage.
 
-🇷🇺 Стоп-лосс всех ваших открытых сделок не должен быть больше 3%. Пожалуйста, будьте осторожны при выборе кредитного плеча.
+🇷🇺 Стоп-лосс всех ваших открытых сделок не должен превышать 3% от вашего общего капитала. Пожалуйста, будьте осторожны при выборе кредитного плеча.
 """
 
 PROMPT = """You are a trading signal assistant. Convert this to ENGLISH ONLY signal.
@@ -266,9 +262,8 @@ async def handle_photo(update, context):
                 return
             raw = generate_with_fallback([PROMPT + f"\n\nCaption text (use this too):\n{caption}\n\nAlso read text inside image.", img_part])
         else:
-            raw = generate_with_fallback([PROMPT, img_part])
-            if "Entry" not in raw or "TP" not in raw:
-                raw = generate_with_fallback([PROMPT_CHART_ONLY, img_part])
+            # عکس خالی - فقط 1 بار، فقط با پرامپت چارت - دیگه 2 بار نمیره
+            raw = generate_with_fallback([PROMPT_CHART_ONLY, img_part])
         clean = normalize_signal(raw)
         final = clean + FOOTER
         await context.bot.send_message(chat_id=GROUP_ID, text=final)

@@ -2,6 +2,7 @@ from flask import Flask
 import threading
 import os
 import re
+import time
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -24,9 +25,31 @@ def run_flask():
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 GEMINI_KEY = os.environ.get("GEMINI_KEY", "")
 GROUP_ID = -1004453681781
-MODEL_NAME = "gemini-3.8-flash"
+
+# اگه اولی شلوغ بود، خودکار میره سراغ بعدی
+MODELS = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3-flash"]
 
 client = genai.Client(api_key=GEMINI_KEY)
+
+def generate_with_fallback(contents):
+    last_error = None
+    for model in MODELS:
+        for attempt in range(2):
+            try:
+                resp = client.models.generate_content(model=model, contents=contents)
+                if resp.text:
+                    return resp.text
+            except Exception as e:
+                last_error = e
+                err = str(e)
+                # اگه 503 یا 404 بود، برو مدل بعدی
+                if "503" in err or "404" in err or "UNAVAILABLE" in err or "NOT_FOUND" in err:
+                    print(f"Model {model} failed, trying next... {err[:100]}")
+                    break
+                print(f"Retry {model} attempt {attempt+1}: {err[:100]}")
+                time.sleep(2)
+                continue
+    raise last_error if last_error else Exception("All Gemini models failed")
 
 FOOTER = """
 
@@ -105,7 +128,6 @@ def translate_and_clean(text):
     }
     for fa, en in replacements.items():
         text = text.replace(fa, en)
-    # حالا هر چی فارسی مونده رو پاک کن
     text = re.sub(r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+', '', text)
     lines = [l.strip() for l in text.split('\n')]
     cleaned = []
@@ -174,7 +196,6 @@ async def handle_text(update, context):
         return
     await update.message.reply_text("دارم تحلیل میکنم... ⏳")
     try:
-        # اول بدون جمینای، سریع و دقیق
         fast = parse_farsi_signal(update.message.text)
         if fast:
             final = fast + FOOTER
@@ -182,12 +203,8 @@ async def handle_text(update, context):
             await update.message.reply_text("فرستادم توی گروه ✅")
             return
 
-        # اگه نشد برو سراغ جمینای
-        response = client.models.generate_content(
-            model=MODEL_NAME,
-            contents=[PROMPT + "\n\nSignal text:\n" + update.message.text]
-        )
-        clean = translate_and_clean(response.text)
+        raw = generate_with_fallback([PROMPT + "\n\nSignal text:\n" + update.message.text])
+        clean = translate_and_clean(raw)
         final = clean + FOOTER
         await context.bot.send_message(chat_id=GROUP_ID, text=final)
         await update.message.reply_text("فرستادم توی گروه ✅")
@@ -201,11 +218,8 @@ async def handle_photo(update, context):
     try:
         photo = await update.message.photo[-1].get_file()
         photo_bytes = await photo.download_as_bytearray()
-        response = client.models.generate_content(
-            model=MODEL_NAME,
-            contents=[PROMPT, genai.types.Part.from_bytes(data=bytes(photo_bytes), mime_type="image/jpeg")]
-        )
-        clean = translate_and_clean(response.text)
+        raw = generate_with_fallback([PROMPT, genai.types.Part.from_bytes(data=bytes(photo_bytes), mime_type="image/jpeg")])
+        clean = translate_and_clean(raw)
         final = clean + FOOTER
         await context.bot.send_message(chat_id=GROUP_ID, text=final)
         await update.message.reply_text("فرستادم توی گروه ✅")

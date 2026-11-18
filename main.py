@@ -78,11 +78,11 @@ SL = 45.69
 Rules:
 - Output MUST be 100% ENGLISH. Never Persian.
 - Translate: Sell / فروش = SHORT, Buy / خرید = LONG
-- Pair: Remove /USDT. LTC/USDT -> LTC
-- Entry: From Enter Limit / Entry / ورود. If By Market write By Market.
+- Pair: Read ANY pair from source. Remove /USDT. LTC/USDT -> LTC, ENAUSDT -> ENA. Never use a fixed list.
+- Entry: From Enter Limit / Entry / ورود / MARKET. If By Market / SELL MARKET / BUY MARKET write By Market.
 - TPs: EXACTLY same number as source. If 4 TPs, output 4. Never invent, never delete.
-- SL: From Stop Loss / حد ضرر. Remove (0.68%) - only number.
-- Ignore chart, Forwarded from, Timeframe, emojis.
+- SL: From Stop Loss / حد ضرر / STOP. Remove (0.68%) - only number.
+- Ignore Forwarded from, Timeframe, emojis.
 - Keep numbers exactly as in source.
 - If input is NOT a trading signal (greeting, hello, random text), output exactly: NOT_A_SIGNAL
 """
@@ -95,7 +95,12 @@ TP2 = X
 TP3 = X
 TP4 = X
 SL = X
-Green box = LONG, Red box = SHORT. Read numbers from right Y-axis labels. No explanation, English only.
+Rules:
+- Pair: read ANY pair from bottom of image. ENAUSDT -> ENA. Do NOT use a fixed list.
+- If text says SELL MARKET / BUY MARKET, Entry = By Market, Direction = SHORT for SELL, LONG for BUY
+- Green box = LONG, Red box = SHORT. Read numbers from right Y-axis labels.
+- Top of red box = SL, blue lines / green boxes = TPs.
+- No explanation, English only.
 If this is NOT a trading chart, output exactly: NOT_A_SIGNAL"""
 
 def to_en_num(s):
@@ -135,13 +140,16 @@ def normalize_signal(raw_text):
         text = translate_and_clean(raw_text)
         text = re.sub(r'\(.*?%.*?\)', '', text)
         text = re.sub(r'\(.*?\)', '', text)
+        # هر ارزی رو قبول کن - بدون لیست
         m_pair = re.search(r'\b([A-Z]{2,10})\s*(?:/USDT|/USD|USDT)?\b', text)
         if not m_pair:
             return text
         pair = m_pair.group(1).upper()
+        # اگه کلمه اول کلمه کلیدی بود، بعدی رو بگیر - بدون لیست ارز
         for bad in ["ENTRY", "TP", "SL", "LONG", "SHORT", "SELL", "BUY", "SIGNAL", "USDT"]:
             if pair == bad:
-                m2 = re.search(r'\b(BTC|ETH|SOL|XRP|DOGE|ADA|AVAX|LINK|TON|NOT|LTC|XAU|GOLD|BNB|TRX|DOT|PEPE|SHIB)\b', text, re.I)
+                rest = text[m_pair.end():]
+                m2 = re.search(r'\b([A-Z]{2,10})\b', rest)
                 if m2:
                     pair = m2.group(1).upper()
                 break
@@ -183,10 +191,14 @@ def parse_farsi_signal(text):
         if m_pair:
             pair = m_pair.group(1).strip().upper().replace("/USDT", "").replace("/USD", "")
         else:
-            m2 = re.search(r'\b(BTC|ETH|SOL|XRP|DOGE|ADA|AVAX|LINK|TON|NOT|XAU|GOLD|BNB|TRX|DOT|LTC)\b', text, re.I)
+            # هر ارزی - بدون لیست
+            m2 = re.search(r'\b([A-Z]{2,10})(?:/USDT|/USD|USDT)?\b', text)
             if not m2:
                 return None
             pair = m2.group(1).upper()
+            # اگه کلمه کلیدی بود ردش کن
+            if pair in ["LONG", "SHORT", "SELL", "BUY", "ENTRY", "MARKET"]:
+                return None
         direction = "LONG"
         if re.search(r'(SHORT|شورت|فروش|سل|SELL)', text, re.I):
             direction = "SHORT"
@@ -220,16 +232,16 @@ def parse_farsi_signal(text):
         print("farsi parse error:", e)
         return None
 
-# --- فیلتر جدید: اگه سیگنال نبود، نفرست ---
+# --- فیلتر جدید: بدون لیست ارز، فقط ساختار سیگنال ---
 def is_valid_signal(text):
     if not text or "NOT_A_SIGNAL" in text:
         return False
     if not re.search(r'\d', text):
         return False
-    has_pair = re.search(r'\b(BTC|ETH|SOL|XRP|DOGE|ADA|AVAX|LINK|TON|NOT|LTC|XAU|GOLD|BNB|TRX|DOT|PEPE|SHIB)\b', text, re.I)
+    has_direction = re.search(r'\b(LONG|SHORT)\b', text, re.I)
     has_tp = re.search(r'TP\s*\d*\s*=', text, re.I)
-    has_entry = re.search(r'Entry', text, re.I)
-    return bool(has_pair and has_tp and has_entry)
+    has_entry = re.search(r'Entry|By Market', text, re.I)
+    return bool(has_direction and has_tp and has_entry)
 
 def is_admin(update):
     return update.effective_user and update.effective_user.id in ADMIN_IDS
@@ -245,7 +257,6 @@ async def handle_text(update, context):
     if not is_admin(update):
         return
     txt = update.message.text.strip()
-    # سلام و چرت و پرت رو همینجا رد کن، اصلا نرو سراغ Gemini
     if len(txt) < 10 or not re.search(r'\d', txt):
         await update.message.reply_text("این سیگنال نیست ❌\nسیگنال رو با ارز، ورود، حد سود و حد ضرر بفرست.")
         return
@@ -279,7 +290,8 @@ async def handle_photo(update, context):
     await update.message.reply_text("دارم عکس رو میخونم... ⏳")
     try:
         photos = update.message.photo
-        photo_obj = photos[1] if len(photos) > 1 else photos[0]
+        # بزرگ‌ترین عکس تا اعداد چارت خونده بشن
+        photo_obj = photos[-1]
         photo = await photo_obj.get_file()
         photo_bytes = await photo.download_as_bytearray()
         img_part = genai.types.Part.from_bytes(data=bytes(photo_bytes), mime_type="image/jpeg")

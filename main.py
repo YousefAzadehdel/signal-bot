@@ -24,17 +24,13 @@ def run_flask():
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 GEMINI_KEY = os.environ.get("GEMINI_KEY", "")
 GROUP_ID = -1004453681781
-
-# --- فقط این آیدی ها میتونن سیگنال بفرستن ---
 ADMIN_IDS = [5386696088]
 
-# --- بخش رفرال ---
 REF_LINK = "https://www.thetruetrade.io/r/37681671"
 GROUP_LINK = "https://t.me/+JBTuusEfwc4zZTZi"
 used_uids = set()
 
 MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
-
 client = genai.Client(api_key=GEMINI_KEY, http_options={"api_version": "v1beta"})
 
 def generate_with_fallback(contents):
@@ -62,25 +58,19 @@ FOOTER = """
 """
 
 PROMPT = """You are a trading signal assistant. Convert this to ENGLISH ONLY signal.
-
 There are 3 possible inputs:
 1. TEXT ONLY: e.g. ارز: LTC فروش ورود: 45.38 حد سود 1: 45.08 حد ضرر: 45.69
 2. PHOTO ONLY: screenshot with chart + text inside image like LTC/USDT Sell Enter Limit: 45.38 TP1: 45.08 SL: 45.69
 3. PHOTO + CAPTION: chart image + caption text. Use BOTH. Caption has priority if conflict.
-
 Also: PHOTO ONLY CHART: if no text in image, read the chart. Green box = LONG, Red box = SHORT. Top of box = TP, Bottom = Entry/SL. Read numbers from Y-axis.
-
 Output EXACTLY like this - no emojis, no extra lines:
-
 LTC SHORT
-
 Entry : 45.38
 TP1 = 45.08
 TP2 = 44.76
 TP3 = 44.45
 TP4 = 44.13
 SL = 45.69
-
 Rules:
 - Output MUST be 100% ENGLISH. Never Persian.
 - Translate: Sell / فروش = SHORT, Buy / خرید = LONG
@@ -232,7 +222,6 @@ def parse_farsi_signal(text):
 def is_admin(update):
     return update.effective_user and update.effective_user.id in ADMIN_IDS
 
-# ============ بخش رفرال برای کاربران عادی ============
 WELCOME_TEXT = (
     "🔗 لینک ثبت‌نام من:\n"
     f"{REF_LINK}\n\n"
@@ -270,7 +259,6 @@ async def ref_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
 
 async def handle_user_uid(update, context):
-    # فقط برای کاربران عادی که بله زدن
     if not context.user_data.get("waiting_uid"):
         await send_ref_message(update, context)
         return
@@ -290,7 +278,6 @@ async def handle_user_uid(update, context):
     )
     await context.bot.send_message(chat_id=ADMIN_IDS[0], text=f"🔔 کاربر جدید تایید شد (خودکار)\n\n👤 {update.effective_user.first_name} @{update.effective_user.username}\n🔢 UID: {text}\n👥 ID: {update.effective_user.id}\n\nتوی پنل رفرال چک کن.")
 
-# ============ بخش ادمین - مثل قبل، دست نخورده ============
 async def start(update, context):
     if is_admin(update):
         await update.message.reply_text("سلام! سیگنال رو بفرست تا بفرستم توی گروه ✅\nمتن، عکس، یا عکس + متن - هر 3 تاش رو می‌خونم")
@@ -303,6 +290,18 @@ async def handle_text(update, context):
     if not is_admin(update):
         await handle_user_uid(update, context)
         return
+
+    text = update.message.text.strip()
+
+    # --- فیلتر جدید: اگه سیگنال نبود، نفرست توی گروه ---
+    signal_keywords = ["ارز", "ورود", "حد سود", "حد ضرر", "تارگت", "Entry", "entry", "TP", "SL", "LONG", "SHORT", "خرید", "فروش", "لانگ", "شورت", "BTC", "ETH", "SOL", "XRP", "DOGE", "LTC", "XAU", "GOLD", "BNB"]
+    has_number = any(c.isdigit() for c in text)
+    is_signal = has_number and any(k in text for k in signal_keywords)
+
+    if not is_signal:
+        await update.message.reply_text("سلام! 👋\nسیگنال رو بفرست تا بفرستم توی گروه ✅\n(این پیام چون سیگنال نبود، توی گروه نرفت)")
+        return
+
     await update.message.reply_text("دارم تحلیل میکنم... ⏳")
     try:
         fast = parse_farsi_signal(update.message.text)
@@ -323,7 +322,6 @@ async def handle_photo(update, context):
     if update.message.chat.type != "private":
         return
     if not is_admin(update):
-        # کاربر عادی عکس فرستاد = فقط لینک رفرال، سیگنالش رو قبول نمی‌کنیم
         await send_ref_message(update, context)
         return
     await update.message.reply_text("دارم عکس رو میخونم... ⏳")

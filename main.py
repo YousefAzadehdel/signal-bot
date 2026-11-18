@@ -7,8 +7,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from google import genai
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 from telegram.request import HTTPXRequest
 
 flask_app = Flask(__name__)
@@ -25,10 +25,6 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 GEMINI_KEY = os.environ.get("GEMINI_KEY", "")
 GROUP_ID = -1004453681781
 ADMIN_IDS = [5386696088]
-
-REF_LINK = "https://www.thetruetrade.io/r/37681671"
-GROUP_LINK = "https://t.me/+JBTuusEfwc4zZTZi"
-used_uids = set()
 
 MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
 client = genai.Client(api_key=GEMINI_KEY, http_options={"api_version": "v1beta"})
@@ -222,78 +218,19 @@ def parse_farsi_signal(text):
 def is_admin(update):
     return update.effective_user and update.effective_user.id in ADMIN_IDS
 
-WELCOME_TEXT = (
-    "🔗 لینک ثبت‌نام من:\n"
-    f"{REF_LINK}\n\n"
-    "🇮🇷 آیا با این لینک ثبت‌نام انجام دادید؟\n"
-    "🇬🇧 Did you register with this link?\n"
-    "🇷🇺 Вы зарегистрировались по этой ссылке?\n"
-)
-
-def get_yes_no_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("✅ بله / Yes / Да", callback_data="ref_yes"),
-         InlineKeyboardButton("❌ خیر / No / Нет", callback_data="ref_no")]
-    ])
-
-async def send_ref_message(update, context):
-    if update.message:
-        await update.message.reply_text(WELCOME_TEXT, reply_markup=get_yes_no_keyboard())
-
-async def ref_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    if query.data == "ref_yes":
-        context.user_data["waiting_uid"] = True
-        await query.message.reply_text(
-            "🇮🇷 لطفا UID خودت رو توی صرافی بفرست (فقط عدد)\n"
-            "🇬🇧 Please send your UID in the exchange (only number)\n"
-            "🇷🇺 Пожалуйста, отправьте ваш UID на бирже (только цифры)"
-        )
-    elif query.data == "ref_no":
-        await query.message.reply_text(
-            "🇮🇷 اول با لینک بالا ثبت‌نام کن، بعد دوباره بیا و بله رو بزن\n"
-            "🇬🇧 First register with the link above, then come back and press Yes\n"
-            "🇷🇺 Сначала зарегистрируйтесь по ссылке выше, затем вернитесь и нажмите Да",
-            reply_markup=get_yes_no_keyboard()
-        )
-
-async def handle_user_uid(update, context):
-    if not context.user_data.get("waiting_uid"):
-        await send_ref_message(update, context)
-        return
-    text = update.message.text.strip() if update.message.text else ""
-    if not text.isdigit():
-        await update.message.reply_text("🇮🇷 فقط عدد بفرست!\n🇬🇧 Send only numbers!\n🇷🇺 Отправляйте только цифры!")
-        return
-    if text in used_uids:
-        await update.message.reply_text("🇮🇷 این UID قبلا استفاده شده!\n🇬🇧 This UID was already used!\n🇷🇺 Этот UID уже был использован!")
-        return
-    used_uids.add(text)
-    context.user_data["waiting_uid"] = False
-    await update.message.reply_text(
-        "✅ تایید شد! / Confirmed! / Подтверждено!\n\n"
-        "🇮🇷 این لینک گروه سیگنال:\n🇬🇧 Here is the signal group link:\n🇷🇺 Вот ссылка на группу сигналов:\n\n"
-        f"{GROUP_LINK}"
-    )
-    await context.bot.send_message(chat_id=ADMIN_IDS[0], text=f"🔔 کاربر جدید تایید شد (خودکار)\n\n👤 {update.effective_user.first_name} @{update.effective_user.username}\n🔢 UID: {text}\n👥 ID: {update.effective_user.id}\n\nتوی پنل رفرال چک کن.")
-
 async def start(update, context):
-    if is_admin(update):
-        await update.message.reply_text("سلام! سیگنال رو بفرست تا بفرستم توی گروه ✅\nمتن، عکس، یا عکس + متن - هر 3 تاش رو می‌خونم")
-    else:
-        await send_ref_message(update, context)
+    if not is_admin(update):
+        return
+    await update.message.reply_text("سلام! سیگنال رو بفرست تا بفرستم توی گروه ✅\nمتن، عکس، یا عکس + متن - هر 3 تاش رو می‌خونم")
 
 async def handle_text(update, context):
     if update.message.chat.type != "private":
         return
     if not is_admin(update):
-        await handle_user_uid(update, context)
         return
 
     text = update.message.text.strip()
 
-    # --- فیلتر جدید: اگه سیگنال نبود، نفرست توی گروه ---
     signal_keywords = ["ارز", "ورود", "حد سود", "حد ضرر", "تارگت", "Entry", "entry", "TP", "SL", "LONG", "SHORT", "خرید", "فروش", "لانگ", "شورت", "BTC", "ETH", "SOL", "XRP", "DOGE", "LTC", "XAU", "GOLD", "BNB"]
     has_number = any(c.isdigit() for c in text)
     is_signal = has_number and any(k in text for k in signal_keywords)
@@ -322,7 +259,6 @@ async def handle_photo(update, context):
     if update.message.chat.type != "private":
         return
     if not is_admin(update):
-        await send_ref_message(update, context)
         return
     await update.message.reply_text("دارم عکس رو میخونم... ⏳")
     try:
@@ -351,7 +287,6 @@ def main():
     request = HTTPXRequest(connect_timeout=30, read_timeout=30, write_timeout=30, pool_timeout=30)
     telegram_app = Application.builder().token(BOT_TOKEN).request(request).build()
     telegram_app.add_handler(CommandHandler("start", start))
-    telegram_app.add_handler(CallbackQueryHandler(ref_button_handler))
     telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     telegram_app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     print("Bot started...")

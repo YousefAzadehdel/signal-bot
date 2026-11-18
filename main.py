@@ -26,7 +26,8 @@ GEMINI_KEY = os.environ.get("GEMINI_KEY", "")
 GROUP_ID = -1004453681781
 ADMIN_IDS = [5386696088]
 
-MODELS = ["gemini-2.5-flash-lite"]
+# مدل جدید گوگل - قبلی حذف شده بود
+MODELS = ["gemini-3.5-flash-lite", "gemini-3.5-flash"]
 
 client = genai.Client(api_key=GEMINI_KEY)
 
@@ -39,6 +40,7 @@ def generate_with_fallback(contents):
                 return resp.text
         except Exception as e:
             last_error = e
+            print(f"Model {model} failed: {e}")
             continue
     raise last_error if last_error else Exception("All Gemini models failed")
 
@@ -253,7 +255,6 @@ async def handle_photo(update, context):
         return
     await update.message.reply_text("دارم عکس رو میخونم... ⏳")
     try:
-        # به جای بزرگ‌ترین عکس، عکس متوسط رو می‌گیریم - بدون نیاز به PIL سریع‌تره
         photos = update.message.photo
         photo_obj = photos[1] if len(photos) > 1 else photos[0]
         photo = await photo_obj.get_file()

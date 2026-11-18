@@ -3,11 +3,9 @@ import threading
 import os
 import re
 import time
-import io
 from dotenv import load_dotenv
 load_dotenv()
 
-from PIL import Image
 from google import genai
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
@@ -28,7 +26,6 @@ GEMINI_KEY = os.environ.get("GEMINI_KEY", "")
 GROUP_ID = -1004453681781
 ADMIN_IDS = [5386696088]
 
-# فقط مدل سبک و سریع - همین باعث شد از 2 دقیقه بیاد پایین
 MODELS = ["gemini-2.5-flash-lite"]
 
 client = genai.Client(api_key=GEMINI_KEY)
@@ -88,7 +85,6 @@ Rules:
 - Keep numbers exactly as in source.
 """
 
-# پرامپت کوتاه و سریع فقط برای عکس تنها - همین سرعت رو بالا می‌بره
 PROMPT_CHART_ONLY = """Read this TradingView chart. Output ONLY:
 PAIR LONG/SHORT
 Entry : X
@@ -224,23 +220,11 @@ def parse_farsi_signal(text):
 def is_admin(update):
     return update.effective_user and update.effective_user.id in ADMIN_IDS
 
-def compress_image(photo_bytes):
-    # عکس رو کوچیک می‌کنه تا Gemini سریع‌تر بخونه
-    try:
-        img = Image.open(io.BytesIO(bytes(photo_bytes)))
-        img.thumbnail((800, 800))
-        buf = io.BytesIO()
-        img.convert("RGB").save(buf, format="JPEG", quality=60)
-        return buf.getvalue()
-    except Exception:
-        return bytes(photo_bytes)
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update):
         return
     await update.message.reply_text("سلام! سیگنال رو بفرست تا بفرستم توی گروه ✅\nمتن، عکس، یا عکس + متن - هر 3 تاش رو می‌خونم")
 
-# --- حالت 1: فقط متن ---
 async def handle_text(update, context):
     if update.message.chat.type != "private":
         return
@@ -262,7 +246,6 @@ async def handle_text(update, context):
     except Exception as e:
         await update.message.reply_text(f"خطا: {e}")
 
-# --- حالت 2 و 3: فقط عکس + عکس با کپشن ---
 async def handle_photo(update, context):
     if update.message.chat.type != "private":
         return
@@ -270,11 +253,12 @@ async def handle_photo(update, context):
         return
     await update.message.reply_text("دارم عکس رو میخونم... ⏳")
     try:
-        photo = await update.message.photo[-1].get_file()
+        # به جای بزرگ‌ترین عکس، عکس متوسط رو می‌گیریم - بدون نیاز به PIL سریع‌تره
+        photos = update.message.photo
+        photo_obj = photos[1] if len(photos) > 1 else photos[0]
+        photo = await photo_obj.get_file()
         photo_bytes = await photo.download_as_bytearray()
-        # فشرده‌سازی - این مهم‌ترین قسمت برای سرعت عکس تنهاست
-        compressed = compress_image(photo_bytes)
-        img_part = genai.types.Part.from_bytes(data=compressed, mime_type="image/jpeg")
+        img_part = genai.types.Part.from_bytes(data=bytes(photo_bytes), mime_type="image/jpeg")
 
         caption = update.message.caption or ""
         if caption:
@@ -286,7 +270,6 @@ async def handle_photo(update, context):
                 return
             raw = generate_with_fallback([PROMPT + f"\n\nCaption text (use this too):\n{caption}\n\nAlso read text inside image.", img_part])
         else:
-            # فقط عکس، بدون کپشن - با پرامپت کوتاه و سریع
             raw = generate_with_fallback([PROMPT_CHART_ONLY, img_part])
 
         clean = normalize_signal(raw)

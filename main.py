@@ -26,7 +26,6 @@ GEMINI_KEY = os.environ.get("GEMINI_KEY", "")
 GROUP_ID = -1004453681781
 ADMIN_IDS = [5386696088]
 
-# مدل جدید گوگل - قبلی حذف شده بود
 MODELS = ["gemini-3.5-flash-lite", "gemini-3.5-flash"]
 
 client = genai.Client(api_key=GEMINI_KEY)
@@ -85,6 +84,7 @@ Rules:
 - SL: From Stop Loss / حد ضرر. Remove (0.68%) - only number.
 - Ignore chart, Forwarded from, Timeframe, emojis.
 - Keep numbers exactly as in source.
+- If input is NOT a trading signal (greeting, hello, random text), output exactly: NOT_A_SIGNAL
 """
 
 PROMPT_CHART_ONLY = """Read this TradingView chart. Output ONLY:
@@ -95,7 +95,8 @@ TP2 = X
 TP3 = X
 TP4 = X
 SL = X
-Green box = LONG, Red box = SHORT. Read numbers from right Y-axis labels. No explanation, English only."""
+Green box = LONG, Red box = SHORT. Read numbers from right Y-axis labels. No explanation, English only.
+If this is NOT a trading chart, output exactly: NOT_A_SIGNAL"""
 
 def to_en_num(s):
     fa = "۰۱۲۳۴۵۶۷۸۹"
@@ -219,6 +220,17 @@ def parse_farsi_signal(text):
         print("farsi parse error:", e)
         return None
 
+# --- فیلتر جدید: اگه سیگنال نبود، نفرست ---
+def is_valid_signal(text):
+    if not text or "NOT_A_SIGNAL" in text:
+        return False
+    if not re.search(r'\d', text):
+        return False
+    has_pair = re.search(r'\b(BTC|ETH|SOL|XRP|DOGE|ADA|AVAX|LINK|TON|NOT|LTC|XAU|GOLD|BNB|TRX|DOT|PEPE|SHIB)\b', text, re.I)
+    has_tp = re.search(r'TP\s*\d*\s*=', text, re.I)
+    has_entry = re.search(r'Entry', text, re.I)
+    return bool(has_pair and has_tp and has_entry)
+
 def is_admin(update):
     return update.effective_user and update.effective_user.id in ADMIN_IDS
 
@@ -232,16 +244,27 @@ async def handle_text(update, context):
         return
     if not is_admin(update):
         return
+    txt = update.message.text.strip()
+    # سلام و چرت و پرت رو همینجا رد کن، اصلا نرو سراغ Gemini
+    if len(txt) < 10 or not re.search(r'\d', txt):
+        await update.message.reply_text("این سیگنال نیست ❌\nسیگنال رو با ارز، ورود، حد سود و حد ضرر بفرست.")
+        return
     await update.message.reply_text("دارم تحلیل میکنم... ⏳")
     try:
-        fast = parse_farsi_signal(update.message.text)
-        if fast:
+        fast = parse_farsi_signal(txt)
+        if fast and is_valid_signal(fast):
             final = fast + FOOTER
             await context.bot.send_message(chat_id=GROUP_ID, text=final)
             await update.message.reply_text("فرستادم توی گروه ✅")
             return
-        raw = generate_with_fallback([PROMPT + "\n\nSignal text:\n" + update.message.text])
+        raw = generate_with_fallback([PROMPT + "\n\nSignal text:\n" + txt])
+        if "NOT_A_SIGNAL" in raw:
+            await update.message.reply_text("این سیگنال نیست ❌")
+            return
         clean = normalize_signal(raw)
+        if not is_valid_signal(clean):
+            await update.message.reply_text("این سیگنال نیست ❌\nنتونستم ارز، ورود و حد سود رو پیدا کنم.")
+            return
         final = clean + FOOTER
         await context.bot.send_message(chat_id=GROUP_ID, text=final)
         await update.message.reply_text("فرستادم توی گروه ✅")
@@ -264,7 +287,7 @@ async def handle_photo(update, context):
         caption = update.message.caption or ""
         if caption:
             fast = parse_farsi_signal(caption)
-            if fast:
+            if fast and is_valid_signal(fast):
                 final = fast + FOOTER
                 await context.bot.send_message(chat_id=GROUP_ID, text=final)
                 await update.message.reply_text("فرستادم توی گروه ✅")
@@ -273,7 +296,13 @@ async def handle_photo(update, context):
         else:
             raw = generate_with_fallback([PROMPT_CHART_ONLY, img_part])
 
+        if "NOT_A_SIGNAL" in raw:
+            await update.message.reply_text("این عکس سیگنال نیست ❌")
+            return
         clean = normalize_signal(raw)
+        if not is_valid_signal(clean):
+            await update.message.reply_text("نتونستم از عکس سیگنال دربیارم ❌\nمطمئن شو عکس چارت با اعداد واضحه.")
+            return
         final = clean + FOOTER
         await context.bot.send_message(chat_id=GROUP_ID, text=final)
         await update.message.reply_text("فرستادم توی گروه ✅")

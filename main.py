@@ -3,11 +3,14 @@ import threading
 import os
 import re
 import time
+import io
 from dotenv import load_dotenv
 load_dotenv()
 
+from PIL import Image
 from google import genai
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 from telegram.request import HTTPXRequest
 
 flask_app = Flask(__name__)
@@ -23,26 +26,23 @@ def run_flask():
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 GEMINI_KEY = os.environ.get("GEMINI_KEY", "")
 GROUP_ID = -1004453681781
+ADMIN_IDS = [5386696088]
 
-MODELS = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3-flash"]
+# فقط مدل سبک و سریع - همین باعث شد از 2 دقیقه بیاد پایین
+MODELS = ["gemini-2.5-flash-lite"]
 
 client = genai.Client(api_key=GEMINI_KEY)
 
 def generate_with_fallback(contents):
     last_error = None
     for model in MODELS:
-        for attempt in range(2):
-            try:
-                resp = client.models.generate_content(model=model, contents=contents)
-                if resp.text:
-                    return resp.text
-            except Exception as e:
-                last_error = e
-                err = str(e)
-                if "503" in err or "404" in err or "UNAVAILABLE" in err or "NOT_FOUND" in err:
-                    break
-                time.sleep(2)
-                continue
+        try:
+            resp = client.models.generate_content(model=model, contents=contents)
+            if resp.text:
+                return resp.text
+        except Exception as e:
+            last_error = e
+            continue
     raise last_error if last_error else Exception("All Gemini models failed")
 
 FOOTER = """
@@ -87,6 +87,17 @@ Rules:
 - Ignore chart, Forwarded from, Timeframe, emojis.
 - Keep numbers exactly as in source.
 """
+
+# پرامپت کوتاه و سریع فقط برای عکس تنها - همین سرعت رو بالا می‌بره
+PROMPT_CHART_ONLY = """Read this TradingView chart. Output ONLY:
+PAIR LONG/SHORT
+Entry : X
+TP1 = X
+TP2 = X
+TP3 = X
+TP4 = X
+SL = X
+Green box = LONG, Red box = SHORT. Read numbers from right Y-axis labels. No explanation, English only."""
 
 def to_en_num(s):
     fa = "۰۱۲۳۴۵۶۷۸۹"
@@ -210,12 +221,30 @@ def parse_farsi_signal(text):
         print("farsi parse error:", e)
         return None
 
-async def start(update, context):
+def is_admin(update):
+    return update.effective_user and update.effective_user.id in ADMIN_IDS
+
+def compress_image(photo_bytes):
+    # عکس رو کوچیک می‌کنه تا Gemini سریع‌تر بخونه
+    try:
+        img = Image.open(io.BytesIO(bytes(photo_bytes)))
+        img.thumbnail((800, 800))
+        buf = io.BytesIO()
+        img.convert("RGB").save(buf, format="JPEG", quality=60)
+        return buf.getvalue()
+    except Exception:
+        return bytes(photo_bytes)
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update):
+        return
     await update.message.reply_text("سلام! سیگنال رو بفرست تا بفرستم توی گروه ✅\nمتن، عکس، یا عکس + متن - هر 3 تاش رو می‌خونم")
 
 # --- حالت 1: فقط متن ---
 async def handle_text(update, context):
     if update.message.chat.type != "private":
+        return
+    if not is_admin(update):
         return
     await update.message.reply_text("دارم تحلیل میکنم... ⏳")
     try:
@@ -237,14 +266,17 @@ async def handle_text(update, context):
 async def handle_photo(update, context):
     if update.message.chat.type != "private":
         return
+    if not is_admin(update):
+        return
     await update.message.reply_text("دارم عکس رو میخونم... ⏳")
     try:
         photo = await update.message.photo[-1].get_file()
         photo_bytes = await photo.download_as_bytearray()
-        img_part = genai.types.Part.from_bytes(data=bytes(photo_bytes), mime_type="image/jpeg")
+        # فشرده‌سازی - این مهم‌ترین قسمت برای سرعت عکس تنهاست
+        compressed = compress_image(photo_bytes)
+        img_part = genai.types.Part.from_bytes(data=compressed, mime_type="image/jpeg")
 
         caption = update.message.caption or ""
-        # اگه کپشن فارسی بود و کامل بود، اول همونو سریع بخون
         if caption:
             fast = parse_farsi_signal(caption)
             if fast:
@@ -252,11 +284,10 @@ async def handle_photo(update, context):
                 await context.bot.send_message(chat_id=GROUP_ID, text=final)
                 await update.message.reply_text("فرستادم توی گروه ✅")
                 return
-            # اگه کپشن ناقص بود، کپشن + عکس رو با هم بده به جمینای
             raw = generate_with_fallback([PROMPT + f"\n\nCaption text (use this too):\n{caption}\n\nAlso read text inside image.", img_part])
         else:
-            # فقط عکس، بدون کپشن
-            raw = generate_with_fallback([PROMPT, img_part])
+            # فقط عکس، بدون کپشن - با پرامپت کوتاه و سریع
+            raw = generate_with_fallback([PROMPT_CHART_ONLY, img_part])
 
         clean = normalize_signal(raw)
         final = clean + FOOTER

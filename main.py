@@ -7,8 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from google import genai
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from telegram.request import HTTPXRequest
 
 flask_app = Flask(__name__)
@@ -24,21 +23,26 @@ def run_flask():
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 GEMINI_KEY = os.environ.get("GEMINI_KEY", "")
 GROUP_ID = -1004453681781
-ADMIN_IDS = [5386696088]
 
-MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
-client = genai.Client(api_key=GEMINI_KEY, http_options={"api_version": "v1beta"})
+MODELS = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3-flash"]
+
+client = genai.Client(api_key=GEMINI_KEY)
 
 def generate_with_fallback(contents):
     last_error = None
     for model in MODELS:
-        try:
-            resp = client.models.generate_content(model=model, contents=contents)
-            if resp.text:
-                return resp.text
-        except Exception as e:
-            last_error = e
-            continue
+        for attempt in range(2):
+            try:
+                resp = client.models.generate_content(model=model, contents=contents)
+                if resp.text:
+                    return resp.text
+            except Exception as e:
+                last_error = e
+                err = str(e)
+                if "503" in err or "404" in err or "UNAVAILABLE" in err or "NOT_FOUND" in err:
+                    break
+                time.sleep(2)
+                continue
     raise last_error if last_error else Exception("All Gemini models failed")
 
 FOOTER = """
@@ -46,27 +50,33 @@ FOOTER = """
 ---
 ⚠️ WARNING / هشدار / ПРЕДУПРЕЖДЕНИЕ
 
-🇮🇷 حد ضرر تمام معاملات باز شما نباید بیشتر از 3% از کل دارایتان باشد. لطفا در انتخاب اهرم دقت فرمایید
+🇮🇷 حد ضرر تمام معاملات باز شما نباید بیشتر از 3% باشد لطفا در انتخاب اهرم دقت فرمایید
 
-🇬🇧 The stop-loss of all your open trades should not be more than 3% of your total capital. Please be careful when choosing leverage.
+🇬🇧 The stop-loss of all your open trades should not be more than 3%. Please be careful when choosing leverage.
 
-🇷🇺 Стоп-лосс всех ваших открытых сделок не должен превышать 3% от вашего общего капитала. Пожалуйста, будьте осторожны при выборе кредитного плеча.
+🇷🇺 Стоп-лосс всех ваших открытых сделок не должен быть больше 3%. Пожалуйста, будьте осторожны при выборе кредитного плеча.
 """
 
 PROMPT = """You are a trading signal assistant. Convert this to ENGLISH ONLY signal.
+
 There are 3 possible inputs:
 1. TEXT ONLY: e.g. ارز: LTC فروش ورود: 45.38 حد سود 1: 45.08 حد ضرر: 45.69
 2. PHOTO ONLY: screenshot with chart + text inside image like LTC/USDT Sell Enter Limit: 45.38 TP1: 45.08 SL: 45.69
 3. PHOTO + CAPTION: chart image + caption text. Use BOTH. Caption has priority if conflict.
+
 Also: PHOTO ONLY CHART: if no text in image, read the chart. Green box = LONG, Red box = SHORT. Top of box = TP, Bottom = Entry/SL. Read numbers from Y-axis.
+
 Output EXACTLY like this - no emojis, no extra lines:
+
 LTC SHORT
+
 Entry : 45.38
 TP1 = 45.08
 TP2 = 44.76
 TP3 = 44.45
 TP4 = 44.13
 SL = 45.69
+
 Rules:
 - Output MUST be 100% ENGLISH. Never Persian.
 - Translate: Sell / فروش = SHORT, Buy / خرید = LONG
@@ -77,21 +87,6 @@ Rules:
 - Ignore chart, Forwarded from, Timeframe, emojis.
 - Keep numbers exactly as in source.
 """
-
-PROMPT_CHART_ONLY = """You are a TradingView chart reader. This image is a CHART ONLY, no text signal. Read price levels from RIGHT SIDE Y-axis.
-Green box on top = LONG, Red box on top = SHORT.
-HORIZONTAL LINES color DOES NOT MATTER - BLACK, BLUE, GREEN, YELLOW, ORANGE, PURPLE, WHITE all count.
-SIGNAL line = thick line + has PRICE LABEL BOX on right side. GRID line = thin, faint, NO label. IGNORE grid lines.
-Entry = dotted line price / current price. TPs = signal lines on profit side, closest to farthest. SL = opposite side red box edge.
-Example:
-XRP LONG
-Entry : 0.9440
-TP1 = 0.9594
-TP2 = 0.9771
-TP3 = 0.9945
-TP4 = 1.0129
-SL = 0.9260
-Rules: Copy numbers EXACTLY from right side labels. Never guess. 100% ENGLISH. No explanation."""
 
 def to_en_num(s):
     fa = "۰۱۲۳۴۵۶۷۸۹"
@@ -215,30 +210,13 @@ def parse_farsi_signal(text):
         print("farsi parse error:", e)
         return None
 
-def is_admin(update):
-    return update.effective_user and update.effective_user.id in ADMIN_IDS
-
 async def start(update, context):
-    if not is_admin(update):
-        return
     await update.message.reply_text("سلام! سیگنال رو بفرست تا بفرستم توی گروه ✅\nمتن، عکس، یا عکس + متن - هر 3 تاش رو می‌خونم")
 
+# --- حالت 1: فقط متن ---
 async def handle_text(update, context):
     if update.message.chat.type != "private":
         return
-    if not is_admin(update):
-        return
-
-    text = update.message.text.strip()
-
-    signal_keywords = ["ارز", "ورود", "حد سود", "حد ضرر", "تارگت", "Entry", "entry", "TP", "SL", "LONG", "SHORT", "خرید", "فروش", "لانگ", "شورت", "BTC", "ETH", "SOL", "XRP", "DOGE", "LTC", "XAU", "GOLD", "BNB"]
-    has_number = any(c.isdigit() for c in text)
-    is_signal = has_number and any(k in text for k in signal_keywords)
-
-    if not is_signal:
-        await update.message.reply_text("سلام! 👋\nسیگنال رو بفرست تا بفرستم توی گروه ✅\n(این پیام چون سیگنال نبود، توی گروه نرفت)")
-        return
-
     await update.message.reply_text("دارم تحلیل میکنم... ⏳")
     try:
         fast = parse_farsi_signal(update.message.text)
@@ -255,17 +233,18 @@ async def handle_text(update, context):
     except Exception as e:
         await update.message.reply_text(f"خطا: {e}")
 
+# --- حالت 2 و 3: فقط عکس + عکس با کپشن ---
 async def handle_photo(update, context):
     if update.message.chat.type != "private":
-        return
-    if not is_admin(update):
         return
     await update.message.reply_text("دارم عکس رو میخونم... ⏳")
     try:
         photo = await update.message.photo[-1].get_file()
         photo_bytes = await photo.download_as_bytearray()
         img_part = genai.types.Part.from_bytes(data=bytes(photo_bytes), mime_type="image/jpeg")
+
         caption = update.message.caption or ""
+        # اگه کپشن فارسی بود و کامل بود، اول همونو سریع بخون
         if caption:
             fast = parse_farsi_signal(caption)
             if fast:
@@ -273,9 +252,12 @@ async def handle_photo(update, context):
                 await context.bot.send_message(chat_id=GROUP_ID, text=final)
                 await update.message.reply_text("فرستادم توی گروه ✅")
                 return
+            # اگه کپشن ناقص بود، کپشن + عکس رو با هم بده به جمینای
             raw = generate_with_fallback([PROMPT + f"\n\nCaption text (use this too):\n{caption}\n\nAlso read text inside image.", img_part])
         else:
-            raw = generate_with_fallback([PROMPT_CHART_ONLY, img_part])
+            # فقط عکس، بدون کپشن
+            raw = generate_with_fallback([PROMPT, img_part])
+
         clean = normalize_signal(raw)
         final = clean + FOOTER
         await context.bot.send_message(chat_id=GROUP_ID, text=final)

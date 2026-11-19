@@ -3,12 +3,13 @@ import threading
 import os
 import re
 import time
+import json
 from dotenv import load_dotenv
 load_dotenv()
 
 from google import genai
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ChatJoinRequestHandler, ContextTypes, filters
 from telegram.request import HTTPXRequest
 
 flask_app = Flask(__name__)
@@ -25,6 +26,32 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 GEMINI_KEY = os.environ.get("GEMINI_KEY", "")
 GROUP_ID = -1004453681781
 ADMIN_IDS = [5386696088]
+
+# ===== رفرال تو =====
+REFERRAL_LINK = "https://www.thetruetrade.io/r/37681671"
+REFERRAL_CODE = "37681671"
+
+# ===== حافظه کاربرانی که ثبت نام کردن - ذخیره در فایل تا با ریستارت رندر پاک نشه =====
+DATA_FILE = "users.json"
+
+def load_users():
+    try:
+        if os.path.exists(DATA_FILE):
+            with open(DATA_FILE, "r") as f:
+                return json.load(f)
+    except:
+        pass
+    return {}
+
+def save_users(data):
+    try:
+        with open(DATA_FILE, "w") as f:
+            json.dump(data, f)
+    except Exception as e:
+        print("save error:", e)
+
+# ساختار: { "user_id": {"registered": True/False, "username": "..."} }
+users_db = load_users()
 
 MODELS = ["gemini-3.5-flash-lite", "gemini-3.5-flash"]
 
@@ -140,12 +167,10 @@ def normalize_signal(raw_text):
         text = translate_and_clean(raw_text)
         text = re.sub(r'\(.*?%.*?\)', '', text)
         text = re.sub(r'\(.*?\)', '', text)
-        # هر ارزی رو قبول کن - بدون لیست
         m_pair = re.search(r'\b([A-Z]{2,10})\s*(?:/USDT|/USD|USDT)?\b', text)
         if not m_pair:
             return text
         pair = m_pair.group(1).upper()
-        # اگه کلمه اول کلمه کلیدی بود، بعدی رو بگیر - بدون لیست ارز
         for bad in ["ENTRY", "TP", "SL", "LONG", "SHORT", "SELL", "BUY", "SIGNAL", "USDT"]:
             if pair == bad:
                 rest = text[m_pair.end():]
@@ -191,12 +216,10 @@ def parse_farsi_signal(text):
         if m_pair:
             pair = m_pair.group(1).strip().upper().replace("/USDT", "").replace("/USD", "")
         else:
-            # هر ارزی - بدون لیست
             m2 = re.search(r'\b([A-Z]{2,10})(?:/USDT|/USD|USDT)?\b', text)
             if not m2:
                 return None
             pair = m2.group(1).upper()
-            # اگه کلمه کلیدی بود ردش کن
             if pair in ["LONG", "SHORT", "SELL", "BUY", "ENTRY", "MARKET"]:
                 return None
         direction = "LONG"
@@ -232,7 +255,6 @@ def parse_farsi_signal(text):
         print("farsi parse error:", e)
         return None
 
-# --- فیلتر جدید: بدون لیست ارز، فقط ساختار سیگنال ---
 def is_valid_signal(text):
     if not text or "NOT_A_SIGNAL" in text:
         return False
@@ -246,15 +268,112 @@ def is_valid_signal(text):
 def is_admin(update):
     return update.effective_user and update.effective_user.id in ADMIN_IDS
 
+# ===== بخش جدید: رفرال و تایید عضویت =====
+
+def get_welcome_keyboard():
+    keyboard = [
+        [InlineKeyboardButton("🔗 ثبت نام با لینک رفرال", url=REFERRAL_LINK)],
+        [InlineKeyboardButton("✅ ثبت نام کردم", callback_data="registered")],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update):
+    user = update.effective_user
+    # اگه ادمین باشه، مثل قبل سیگنال می‌فرسته
+    if is_admin(update):
+        await update.message.reply_text(
+            "سلام ادمین! سیگنال رو بفرست تا بفرستم توی گروه ✅\nمتن، عکس، یا عکس + متن - هر 3 تاش رو می‌خونم\n\nبرای گرفتن لینک رفرال بزن /link"
+        )
         return
-    await update.message.reply_text("سلام! سیگنال رو بفرست تا بفرستم توی گروه ✅\nمتن، عکس، یا عکس + متن - هر 3 تاش رو می‌خونم")
+
+    # اگه قبلا ثبت نام کرده باشه
+    uid = str(user.id)
+    if uid in users_db and users_db[uid].get("registered"):
+        await update.message.reply_text(
+            "تو قبلاً ثبت نامت رو تایید کردی ✅\nحالا روی لینک گروه بزن و درخواست بده تا خودکار تاییدت کنم."
+        )
+        return
+
+    # کاربر جدید - لینک رفرال رو نشون بده
+    await update.message.reply_text(
+        f"سلام {user.first_name} 👋\n\n"
+        "به ربات سیگنال VIP خوش اومدی!\n\n"
+        "برای ورود به گروه VIP باید اول از لینک زیر توی TrueTrade ثبت نام کنی:\n\n"
+        f"🔗 {REFERRAL_LINK}\n\n"
+        "مراحل:\n"
+        "1️⃣ روی دکمه ثبت نام بزن و حسابت رو بساز\n"
+        "2️⃣ برگرد اینجا و بزن «ثبت نام کردم»\n"
+        "3️⃣ بعد روی لینک گروه بزن، خودکار تایید میشی ✅",
+        reply_markup=get_welcome_keyboard()
+    )
+
+async def link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        f"لینک رفرال تو:\n{REFERRAL_LINK}\n\nاین لینک رو به بقیه بده تا با کد تو ثبت نام کنن."
+    )
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user = query.from_user
+    uid = str(user.id)
+
+    if query.data == "registered":
+        users_db[uid] = {"registered": True, "username": user.username or "", "first_name": user.first_name or ""}
+        save_users(users_db)
+        print(f"User {uid} marked as registered", flush=True)
+        await query.edit_message_text(
+            "آفرین! ثبت نامت ثبت شد ✅\n\n"
+            "حالا روی لینک گروه بزن و درخواست عضویت بده.\n"
+            "ربات به صورت خودکار تاییدت می‌کنه.\n\n"
+            "اگه درخواستت تایید نشد، به ادمین پیام بده."
+        )
+        # به ادمین خبر بده
+        try:
+            for admin_id in ADMIN_IDS:
+                await context.bot.send_message(
+                    chat_id=admin_id,
+                    text=f"🆕 کاربر جدید ثبت نام کرد:\n@{user.username or 'بدون یوزرنیم'} - {user.first_name} (ID: {user.id})\nبا لینک رفرال: {REFERRAL_CODE}"
+                )
+        except Exception as e:
+            print("notify admin error:", e)
+
+async def handle_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    req = update.chat_join_request
+    user_id = str(req.from_user.id)
+    print(f"Join request from {user_id} - @{req.from_user.username}", flush=True)
+
+    # فقط اگه توی ربات دکمه «ثبت نام کردم» رو زده باشه تاییدش کن
+    if user_id in users_db and users_db[user_id].get("registered"):
+        try:
+            await req.approve()
+            print(f"Approved {user_id}", flush=True)
+            try:
+                await context.bot.send_message(chat_id=req.from_user.id, text="تبریک! درخواستت تایید شد و وارد گروه VIP شدی 🎉")
+            except:
+                pass
+        except Exception as e:
+            print("approve error:", e)
+    else:
+        print(f"Ignored join request from {user_id} - not registered yet", flush=True)
+        try:
+            await context.bot.send_message(
+                chat_id=req.from_user.id,
+                text=f"سلام! اول باید توی ربات ثبت نامت رو تایید کنی.\n\nبرو توی ربات و بزن /start\nبعد با این لینک ثبت نام کن:\n{REFERRAL_LINK}\nبعد بزن «ثبت نام کردم» و دوباره درخواست بده."
+            )
+        except:
+            pass
+
+# ===== بخش قبلی سیگنال - بدون تغییر =====
 
 async def handle_text(update, context):
     if update.message.chat.type != "private":
         return
     if not is_admin(update):
+        # کاربر عادی اگه متن بفرسته، راهنماییش کن
+        await update.message.reply_text(
+            f"برای ورود به گروه VIP اول باید ثبت نام کنی 👇\n{REFERRAL_LINK}\n\nبعد از ثبت نام بزن /start"
+        )
         return
     txt = update.message.text.strip()
     if len(txt) < 10 or not re.search(r'\d', txt):
@@ -290,7 +409,6 @@ async def handle_photo(update, context):
     await update.message.reply_text("دارم عکس رو میخونم... ⏳")
     try:
         photos = update.message.photo
-        # بزرگ‌ترین عکس تا اعداد چارت خونده بشن
         photo_obj = photos[-1]
         photo = await photo_obj.get_file()
         photo_bytes = await photo.download_as_bytearray()
@@ -325,9 +443,12 @@ def main():
     request = HTTPXRequest(connect_timeout=30, read_timeout=30, write_timeout=30, pool_timeout=30)
     telegram_app = Application.builder().token(BOT_TOKEN).request(request).build()
     telegram_app.add_handler(CommandHandler("start", start))
+    telegram_app.add_handler(CommandHandler("link", link_command))
+    telegram_app.add_handler(CallbackQueryHandler(button_handler))
+    telegram_app.add_handler(ChatJoinRequestHandler(handle_join_request))
     telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     telegram_app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    print("Bot started...")
+    print("Bot started...", flush=True)
     telegram_app.run_polling()
 
 if __name__ == '__main__':

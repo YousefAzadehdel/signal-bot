@@ -12,7 +12,15 @@ from google import genai
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters, ChatJoinRequestHandler, ChatMemberHandler
 from telegram.request import HTTPXRequest
-from gtts import gTTS
+
+# ===== فیکس کرش gTTS - اگه نصب نباشه بات نمی‌میره =====
+try:
+    from gtts import gTTS
+    HAS_TTS = True
+except ImportError:
+    gTTS = None
+    HAS_TTS = False
+    print("gTTS not installed - voice sending disabled, bot still works")
 
 flask_app = Flask(__name__)
 @flask_app.route('/')
@@ -100,8 +108,10 @@ def is_image_request(msg):
     kws = ["عکس بساز", "عکس بکش", "تصویر بساز", "عکس درست کن", "یه عکس", "make an image", "generate image", "draw", "сделай картинку", "нарисуй"]
     return any(k in m for k in kws)
 
-# ===== فقط برای کاربر: فرستادن ویس =====
+# ===== فقط برای کاربر: فرستادن ویس - امن =====
 async def send_voice_reply(context, chat_id, text, lang="fa"):
+    if not HAS_TTS:
+        return False
     tts_lang = {"fa": "fa", "en": "en", "ru": "ru"}.get(lang, "fa")
     try:
         buf = BytesIO()
@@ -750,12 +760,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user; msg = update.message.text.strip()
     if is_banned(user.id) and not is_admin(update):
         await update.message.reply_text(TEXTS["fa"]["banned_msg"]); return
-    # ===== ادمین - فقط سیگنال =====
     if is_admin(update):
         if msg.startswith("/"): return
         pending_items[user.id] = {"type": "text", "text": msg}
         await update.message.reply_text("این چیه؟ 👇", reply_markup=get_choice_keyboard()); return
-    # ===== از اینجا فقط کاربر =====
     if msg.startswith("/"): return
     if is_exchange_question(msg):
         lang = get_lang(user.id)
@@ -838,11 +846,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(TEXTS["fa"]["banned_msg"]); return
     photo = update.message.photo[-1]
     caption = (update.message.caption or "").strip()
-    # ===== ادمین - فقط سیگنال =====
     if is_admin(update):
         pending_items[user.id] = {"type": "photo", "photo_id": photo.file_id, "caption": caption}
         await update.message.reply_text("این چیه؟ 👇", reply_markup=get_choice_keyboard()); return
-    # ===== فقط کاربر =====
     topic = get_topic(user.id)
     lang = get_lang(user.id)
     if topic == "register" or is_register_help_request(caption) or any(k in caption for k in ["ثبت نام", "گیر کردم", "راهنماییم"]):
@@ -905,11 +911,9 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         transcribed = transcribed.strip()
         if not transcribed or len(transcribed) < 2:
             await update.message.reply_text("صدات رو واضح نشنیدم 😅 یه بار دیگه، آروم‌تر بگو"); return
-        # ===== ادمین - فقط سیگنال =====
         if is_admin(update):
             pending_items[user.id] = {"type": "text", "text": transcribed}
             await update.message.reply_text(f"🎤 شنیدم گفتی:\n{transcribed}\n\nاین چیه؟ 👇", reply_markup=get_choice_keyboard()); return
-        # ===== فقط کاربر - جواب منطقی به ویس =====
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
         reply = get_chat_reply(user.id, user.first_name or "", transcribed)
         if reply:

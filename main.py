@@ -8,8 +8,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from google import genai
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters, ChatJoinRequestHandler, ChatMemberHandler
 from telegram.request import HTTPXRequest
 
 flask_app = Flask(__name__)
@@ -102,9 +102,7 @@ def get_topic(uid): return users_db.get(str(uid), {}).get("topic", "onboarding")
 def set_topic(uid, topic):
     users_db.setdefault(str(uid), {})["topic"] = topic; save_users(users_db)
 
-# ============================================================
 # ===== فیکس قطعی سلام تکراری - برای هر 3 مسیر =====
-# ============================================================
 def clean_all_replies(reply, is_first_message=False):
     if not reply: return reply
     if is_first_message: return reply
@@ -166,7 +164,6 @@ def detect_topic(msg):
 
 def is_register_help_request(msg):
     m = msg.lower()
-    # اگه گفت "روسی بلد نیستم" یعنی زبان، نه ثبت‌نام
     if any(k in m for k in ["روسی بلد نیستم", "انگلیسی بلد نیستم", "فارسی بلد نیستم", "روسی نمی‌دونم", "انگلیسی نمی‌دونم", "روسی نمی‌فهمم", "не знаю русский", "don't know russian", "i don't know russian"]):
         return False
     if "بلد نیستم" in m:
@@ -334,7 +331,6 @@ PROMPT_CLASSIFY = """Look at this image / text. Answer with ONE word only:
 - If it is neither -> UNKNOWN
 Output ONLY one word: SIGNAL or RESULT or UNKNOWN"""
 
-# ===== پرامپت ضد توهم رفرال - برای اسکرین ثبت‌نام =====
 PROMPT_REGISTER_SCREEN = """
 You are helping user register on TrueTrade. Look at this screenshot CAREFULLY.
 Rules - HARD, NEVER BREAK:
@@ -442,7 +438,6 @@ def is_colloquial_msg(msg):
     slang = ["داداش", "رفیق", "جون", "مخلصم", "چاکریم", "حله", "اوکی", "دمت گرم", "چی کاره", "چه خبر", "خوبی", "یه", "می‌خوام", "نمی‌خوام", "برو بابا", "ولش", "عشقی", "yo", "bro", "dude", "чувак", "бро", "давай", "короче"]
     return any(s in m for s in slang)
 
-# ===== مسیر 1: متن =====
 def get_chat_reply(user_id, user_name, user_msg):
     detected = detect_lang_from_msg(user_msg)
     if detected:
@@ -470,7 +465,6 @@ def get_chat_reply(user_id, user_name, user_msg):
     try:
         reply = generate_with_fallback([prompt])
         reply = reply.strip()
-        # فیکس سلام برای متن
         reply = clean_all_replies(reply, is_first_message=is_first)
         chat_history.setdefault(user_id, []).append({"role": "user", "text": user_msg})
         chat_history[user_id].append({"role": "bot", "text": reply})
@@ -833,30 +827,26 @@ async def send_as_status(item, user, context, choice):
     except Exception as e:
         await context.bot.send_message(chat_id=user.id, text=f"خطا: {e}"); return False
 
-# ===== مسیر 1: متن - handle_text =====
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user; msg = update.message.text.strip()
     if is_banned(user.id) and not is_admin(update):
         await update.message.reply_text(TEXTS["fa"]["banned_msg"]); return
-    # --- ادمین: سیگنال متنی ---
     if is_admin(update):
         if msg.startswith("/"): return
         pending_items[user.id] = {"type": "text", "text": msg}
         await update.message.reply_text("این چیه؟ 👇", reply_markup=get_choice_keyboard()); return
     if msg.startswith("/"): return
-    # --- دکمه‌ها ---
     if is_hide_buttons_request(msg):
         hide_buttons_for(user.id)
         lang = get_lang(user.id)
         txt = "باشه، دکمه‌ها رو برداشتم ✅\nتا وقتی خودت نگی، دیگه نشونشون نمیدم." if lang=="fa" else ("Done, I removed buttons ✅" if lang=="en" else "Готово, убрал кнопки ✅")
-        await update.message.reply_text(txt, reply_markup=ReplyKeyboardRemove() if False else None)
+        await update.message.reply_text(txt, reply_markup=ReplyKeyboardRemove())
         return
     if is_show_buttons_request(msg):
         show_buttons_for(user.id)
         lang = get_lang(user.id)
         txt = "باشه، دکمه‌ها رو برگردوندم 😊" if lang=="fa" else ("Done, buttons are back 😊" if lang=="en" else "Готово, вернул кнопки 😊")
         await update.message.reply_text(txt, reply_markup=get_keyboard_or_none(user.id, get_welcome_keyboard(user.id))); return
-    # --- تغییر زبان دستی: "روسی بلد نیستم" یعنی زبان رو عوض کن ---
     low = msg.lower()
     if any(k in low for k in ["روسی بلد نیستم", "روسی نمی‌دونم", "روسی نمیفهمم", "не знаю русский"]):
         set_lang(user.id, "ru"); set_topic(user.id, "onboarding")
@@ -870,7 +860,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         set_lang(user.id, "fa"); set_topic(user.id, "onboarding")
         await update.message.reply_text("آهان فهمیدم 😊 مشکلی نیست.\nپس فارسی حرف بزنیم.\n\nبگو ببینم، تو از کجا پیدام کردی؟")
         return
-    # --- درخواست نمایی از گروه ---
     if is_preview_request(msg):
         lang = get_lang(user.id)
         sent = await send_preview_photos(context.bot, update.effective_chat.id, lang, get_keyboard_or_none(user.id, get_welcome_keyboard(user.id)))
@@ -881,7 +870,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(f"👀 امروز توی گروه:\n{preview}\n\n🔗 ثبت نام کن:\n{REFERRAL_LINK}", reply_markup=get_keyboard_or_none(user.id, get_welcome_keyboard(user.id)))
         return
-    # --- درخواست راهنمایی ثبت‌نام ---
     if is_register_help_request(msg):
         set_topic(user.id, "register")
         lang = get_lang(user.id)
@@ -889,46 +877,38 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif lang == "ru": txt = f"Хорошо, пойдем шаг за шагом 😊\n\n1️⃣ Сначала зарегистрируйся по этой ссылке:\n{REFERRAL_LINK}\n\n2️⃣ Когда дойдешь до страницы регистрации, пришли скриншот, посмотрю где ты застрял."
         else: txt = f"Ok, let's go step by step 😊\n\n1️⃣ First register with this link:\n{REFERRAL_LINK}\n\n2️⃣ When you reach registration page, send screenshot, I'll see where you are stuck."
         await update.message.reply_text(txt, reply_markup=get_keyboard_or_none(user.id, get_welcome_keyboard(user.id))); return
-    # --- معرفی ---
     if is_who_are_you(msg):
         lang = get_lang(user.id)
         if lang == "ru": txt = "Меня зовут Рахавард 😊\nЯ могу болтать с тобой, отвечать на вопросы, помогать с регистрацией, и если захочешь, помочь тебе присоединиться к нам.\nЯ НЕ могу: предсказывать будущее рынка и добавлять в VIP без админа.\n\nА тебя как зовут?"
         elif lang == "en": txt = "My name is Rahavard 😊\nI can chat with you, answer your questions, help with registration, and if you want, guide you to join us.\nI CAN'T: predict the future of the market and add you to VIP without admin.\n\nWhat's your name?"
         else: txt = "اسمم رهاورده 😊\nمیتونم باهات گپ بزنم، سوالاتت رو جواب بدم، توی ثبت نام کمکت کنم، و اگه خودت خواستی راهنماییت کنم که چجوری به جمع ما بیای.\nنمیتونم: آینده بازار رو پیش‌گویی کنم و بدون تایید ادمین ببرمت توی VIP.\n\nتو اسم چیه؟"
         await update.message.reply_text(txt); return
-    # --- چت عادی با Gemini - مسیر متن ---
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     reply = get_chat_reply(user.id, user.first_name or "", msg)
     if reply:
-        # اگه تاپیک ثبت‌نام / گروه باشه، دکمه رو هم نشون بده
         topic = get_topic(user.id)
         kb = get_keyboard_or_none(user.id, get_welcome_keyboard(user.id)) if topic in ["ask_group", "register"] else None
         await update.message.reply_text(reply, reply_markup=kb)
     else:
         await update.message.reply_text("ببخشید، یه لحظه قطع شد 😅 دوباره بگو")
 
-# ===== مسیر 2: عکس / اسکرین =====
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if is_banned(user.id) and not is_admin(update):
         await update.message.reply_text(TEXTS["fa"]["banned_msg"]); return
     photo = update.message.photo[-1]
     caption = update.message.caption or ""
-    # --- ادمین: سیگنال عکس ---
     if is_admin(update):
         pending_items[user.id] = {"type": "photo", "photo_id": photo.file_id, "caption": caption}
         await update.message.reply_text("این چیه؟ 👇", reply_markup=get_choice_keyboard()); return
-    # --- کاربر عادی: اسکرین ثبت‌نام یا چت عکس ---
     topic = get_topic(user.id)
     lang = get_lang(user.id)
-    # اگه توی حالت ثبت‌نام / راهنماییه، با پرامپت ضد توهم تحلیل کن
     if topic == "register" or is_register_help_request(caption) or any(k in caption for k in ["ثبت نام", "گیر کردم", "راهنماییم"]):
         await update.message.reply_text(t(user.id, "analyzing"))
         try:
             file = await context.bot.get_file(photo.file_id); photo_bytes = await file.download_as_bytearray()
             img_part = genai.types.Part.from_bytes(data=bytes(photo_bytes), mime_type="image/jpeg")
             raw = generate_with_fallback([PROMPT_REGISTER_SCREEN, img_part])
-            # فیکس سلام برای عکس - همیشه is_first=False چون کاربر قبلاً /start زده
             cleaned = clean_all_replies(raw, is_first_message=False)
             chat_history.setdefault(user.id, []).append({"role": "user", "text": "[عکس ثبت‌نام فرستاد]"})
             chat_history[user.id].append({"role": "bot", "text": cleaned})
@@ -936,8 +916,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             await update.message.reply_text(f"نتونستم عکس رو بخونم 😅 یه اسکرین واضح‌تر بفرست، فقط روی قسمت کد معرف زوم کن.\n{e}")
         return
-    # اگه عکس سیگنال / چارت فرستاد ولی کاربر عادیه، بگو فقط ادمین می‌تونه
-    # اگه عکس معمولیه، با Gemini جواب بده بدون سلام
     await update.message.reply_text(t(user.id, "analyzing"))
     try:
         file = await context.bot.get_file(photo.file_id); photo_bytes = await file.download_as_bytearray()
@@ -953,7 +931,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"عکس رو نتونستم بخونم 😅\n{e}")
 
-# ===== مسیر 3: ویس =====
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if is_banned(user.id) and not is_admin(update):
@@ -962,21 +939,17 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         voice = update.message.voice
         file = await context.bot.get_file(voice.file_id); voice_bytes = await file.download_as_bytearray()
-        # Gemini: ویس رو به متن تبدیل کن
         audio_part = genai.types.Part.from_bytes(data=bytes(voice_bytes), mime_type="audio/ogg")
         transcribed = generate_with_fallback(["Transcribe this voice message to text, exactly what user said. Output ONLY transcription.", audio_part])
         transcribed = transcribed.strip()
         if not transcribed:
             await update.message.reply_text("صدات رو نشنیدم 😅 دوباره بفرست"); return
-        # حالا مثل متن باهاش رفتار کن
         if is_admin(update):
             pending_items[user.id] = {"type": "text", "text": transcribed}
             await update.message.reply_text(f"🎤 شنیدم گفتی:\n{transcribed}\n\nاین چیه؟ 👇", reply_markup=get_choice_keyboard()); return
-        # کاربر عادی: مثل متن
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
         reply = get_chat_reply(user.id, user.first_name or "", transcribed)
         if reply:
-            # get_chat_reply خودش clean کرده، ولی برای اطمینان دوباره تمیز کن
             reply = clean_all_replies(reply, is_first_message=False)
             await update.message.reply_text(f"🎤 شنیدم گفتی: {transcribed}\n\n{reply}")
         else:

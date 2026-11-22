@@ -124,6 +124,56 @@ def unban_user(uid):
     banned_users.discard(str(uid))
     save_banned()
 
+# ===== دکمه‌ها: تا خودش نخواد نشون نده =====
+def is_hide_buttons_request(msg):
+    m = msg.lower()
+    keywords = ["کلا دکمه", "دکمه هارو تا نگفتم", "دکمه ها رو تا نگفتم", "دکمه هارو نمایش نده", "دکمه ها رو نمایش نده", "دکمه رو نمایش نده", "دکمه", "دکمه‌ها", "دکمه ها", "پاک کن", "حذف کن", "بردار", "خاموش", "hide", "button", "remove button", "убери кнопки", "кнопки"]
+    return any(k in m for k in keywords)
+
+def is_show_buttons_request(msg):
+    m = msg.lower()
+    keywords = ["دکمه ها رو برگردون", "دکمه‌ها رو برگردون", "دکمه رو برگردون", "دکمه هارو برگردون", "دکمه ها رو نشون بده", "دکمه‌ها رو نشون بده", "دکمه رو نشون بده", "دکمه هارو نشون بده", "برگردون دکمه", "نشون بده دکمه", "верни кнопки", "покажи кнопки", "bring buttons back", "show buttons"]
+    return any(k in m for k in keywords)
+
+def hide_buttons_for(uid):
+    users_db.setdefault(str(uid), {})["hide_buttons"] = True
+    save_users(users_db)
+
+def show_buttons_for(uid):
+    users_db.setdefault(str(uid), {})["hide_buttons"] = False
+    save_users(users_db)
+
+def should_show_keyboard(uid):
+    # اگه کاربر گفته نمایش نده، تا خودش نخواد هیچ دکمه‌ای نفرست
+    return not users_db.get(str(uid), {}).get("hide_buttons", False)
+
+def get_keyboard_or_none(uid, keyboard):
+    if should_show_keyboard(uid):
+        return keyboard
+    return None
+
+# ===== معرفی ربات: چه کاره‌ای؟ =====
+def is_who_are_you(msg):
+    m = msg.lower()
+    keywords = ["چه کاره", "چه کاره ای", "شغلت چیه", "شغل چیه", "چی بلدی", "چی یاد میدی", "چی یاد می‌دهی", "از دستت برمیاد", "از دستت بر میاد", "برمیاد از دستت", "چی کار میکنی", "چی کار می‌کنی", "تو کی هستی", "تو کیی", "معرفی", "who are you", "what can you do", "что ты умеешь", "кто ты", "чем занимаешься"]
+    return any(k in m for k in keywords)
+
+def get_self_intro(lang, colloquial=True):
+    if lang == "fa":
+        if colloquial:
+            return "مخلصم یوسف جان! 😎 من دستیار سیگنال و رفیق تریدتم.\n\n**شغلم:** آنالیز بازار و راهنماییت تو\n**بلدم:** اصطلاحات ترید (اهرم، TP/SL)، تحلیل بازار، راهنمایی ثبت‌نام، گپ زدن و جواب سوالاتت\n**برمیاد از دستم:** پاسخ به سوالات، حذف دکمه‌ها، راهنماییت تا سود گرفتن\n**برنمیاد از دستم:** غیب‌گویی آینده بازار 😅 و اد کردن مستقیم به VIP بدون تایید ادمین\n\nخلاصه همه‌جوره پایه‌ام! دیگه چی می‌خوای بدونی؟ 😎"
+        return "سلام! من دستیار سیگنال و راهنمای شما هستم.\n\n**شغل من:** آنالیز بازار و راهنمایی شما\n**توانایی‌ها:** آموزش اصطلاحات ترید، تحلیل بازار، راهنمایی ثبت‌نام\n**نمی‌توانم:** پیش‌گویی دقیق بازار و اضافه کردن مستقیم به VIP بدون تایید ادمین"
+    elif lang == "ru":
+        return "Привет! 😎 Я твой помощник по сигналам и друг в трейдинге.\n\n**Моя работа:** анализ рынка и помощь тебе\n**Я умею:** термины трейдинга (плечо, TP/SL), анализ рынка, помощь с регистрацией, болтать и отвечать на вопросы\n**Я могу:** отвечать на вопросы, убирать кнопки, помогать тебе до прибыли\n**Я не могу:** предсказывать будущее рынка 😅 и добавлять напрямую в VIP без админа\n\nКороче, я всегда на связи! Что еще хочешь узнать? 😎"
+    else:
+        return "Hey! 😎 I'm your signal assistant and trading buddy.\n\n**My job:** Market analysis and guiding you\n**I can:** Trading terms (leverage, TP/SL), market analysis, registration help, chatting and answering your questions\n**I can do:** Answer questions, remove buttons, guide you to profit\n**I can't:** Predict the future of market 😅 and add you directly to VIP without admin approval\n\nIn short, I'm always here! What else do you want to know? 😎"
+
+# ===== کمک ثبت نام با اسکرین =====
+def is_register_help_request(msg):
+    m = msg.lower()
+    keywords = ["کمک ثبت نام", "کمک کن ثبت نام", "ثبت نام نمیتونم", "ثبت نام نمی‌تونم", "گیر کردم", "گیر کردم تو ثبت نام", "ثبت نامم نمیشه", "بلد نیستم ثبت نام", "چجوری ثبت نام", "چطوری ثبت نام", "راهنمایی ثبت نام", "help register", "can't register", "cant register", "help with registration", "помоги с регистрацией", "не могу зарегистрироваться", "застрял"]
+    return any(k in m for k in keywords)
+
 # ===== چرخه یادآوری گروه: 30 دقیقه توی چت / 24 ساعت بیرون چت =====
 CASUAL_PHRASES = ["بیا حرف بزنیم", "حرف بزنیم", "گپ بزنیم", "بیا گپ بزنیم", "حوصلم سر رفته", "حوصله ام سر رفته", "دلم گرفته", "بیا صحبت کنیم", "صحبت کنیم", "فقط حرف بزنیم", "lets talk", "let's talk", "let s talk", "just talk", "chat with me", "talk to me", "поговорим", "давай поговорим", "давай поболтаем", "мне скучно", "поболтаем", "пообщаемся"]
 
@@ -204,7 +254,7 @@ async def send_daily_group_prompt(context: ContextTypes.DEFAULT_TYPE):
         try:
             lang = data.get("lang", "fa")
             msg = get_casual_24h_msg(lang, data.get("first_name", ""))
-            await context.bot.send_message(chat_id=int(uid), text=msg, reply_markup=get_welcome_keyboard(int(uid)))
+            await context.bot.send_message(chat_id=int(uid), text=msg, reply_markup=get_keyboard_or_none(int(uid), get_welcome_keyboard(int(uid))))
             users_db[uid]["last_group_prompt"] = now.isoformat()
             save_users(users_db)
         except Exception as e:
@@ -291,11 +341,6 @@ def get_preview_text(lang, detailed=False):
 def is_preview_request(msg):
     m = msg.lower()
     keywords = ["preview", "نمای", "نمایی", "پیش نمایش", "پیش‌نمایش", "آمار", "امار", "سیگنال امروز", "سیگنال های امروز", "سیگنال‌های امروز", "امروز چی", "امروز چه", "چی شد", "نتیجه", "результат", "статистика", "сегодня", "покажи", "показать", "عکس", "عکسا", "عکس‌ها"]
-    return any(k in m for k in keywords)
-
-def is_hide_buttons_request(msg):
-    m = msg.lower()
-    keywords = ["دکمه", "دکمه‌ها", "دکمه ها", "پاک کن", "حذف کن", "بردار", "خاموش", "hide", "button", "remove button", "убери кнопки", "кнопки"]
     return any(k in m for k in keywords)
 
 async def send_preview_photos(bot, chat_id, lang, keyboard):
@@ -508,8 +553,17 @@ PROMPT_CLASSIFY = """Look at this image / text. Answer with ONE word only:
 - If it is neither -> output: UNKNOWN
 Output ONLY one word: SIGNAL or RESULT or UNKNOWN"""
 
-def get_chat_prompt(lang, user_name, status, history_text, user_msg, preview_detail, casual_mode):
+def get_chat_prompt(lang, user_name, status, history_text, user_msg, preview_detail, casual_mode, is_colloquial):
     lang_name = {"fa": "Persian (Farsi)", "en": "English", "ru": "Russian"}.get(lang, "Persian")
+    style_rule = ""
+    if is_colloquial:
+        style_rule = """
+- STYLE - VERY IMPORTANT: User is speaking COLLOQUIAL / slang / street language. You MUST reply in the SAME colloquial slang, same vibe. Use slang, short broken sentences, jokes, teasing, like a real friend on Telegram. NEVER use formal book language. If user says "داداش", you say "داداش". If user says "چی کاره‌ای", you say "مخلصم". Match them 100%.
+"""
+    else:
+        style_rule = """
+- STYLE: Mirror user exactly. Formal -> formal, casual -> casual.
+"""
     casual_rule = ""
     if casual_mode:
         casual_rule = """
@@ -528,9 +582,10 @@ USER INFO:
 YOUR RULES:
 - Do EVERYTHING user asks: explain trading, answer questions, show stats, joke, chat, help with registration, explain leverage/SL/TP, etc. Be helpful like a friend.
 - NEVER do restricted actions: NEVER let user join group directly, NEVER approve registration yourself, NEVER unban, NEVER give group invite link unless user is approved_by_admin. If user asks to join group without registration, politely say admin must approve first and guide to register.
-- BUTTONS: The inline buttons below messages are YOUR buttons, you CAN remove them. If user asks to remove / hide buttons, say "حله، پاکشون کردم ✅" in user's language and confirm. NEVER say "دست من نیست" or "مال سیستم تلگرامه" or "زورم نمیرسه". Buttons are yours.
+- BUTTONS: The inline buttons below messages are YOUR buttons, you CAN remove them. If user asks to remove / hide buttons, say "حله، پاکشون کردم ✅" in user's language and confirm. NEVER say "دست من نیست" or "مال سیستم تلگرامه" or "زورم نمیرسه". Buttons are yours. And after hiding, NEVER show them again until user explicitly asks to bring them back.
 - PREVIEW RULE: If user asks for preview, NEVER send text signals. ONLY TP/SL photos are sent by system. Never invent signal text. Never claim 80-90% accuracy. Only use real numbers below.
-- Mirror user EXACTLY: casual/funny -> casual/funny, formal -> formal, short -> short, slang -> same slang.
+- If user asks "what is your job / what can you do / what can't you do", give SHORT intro: I am signal assistant and trading friend. I CAN: explain trading terms, analyze market, help registration, answer questions, remove buttons, chat. I CAN'T: predict future of market, add directly to VIP without admin approval.
+{style_rule}
 - Use emojis, jokes, teasing. Short sentences, simple words. If user speaks broken Russian/English, use VERY simple short sentences.
 - If user angry/swears, NEVER swear back, NEVER insult. Stay calm, funny, kind.
 {casual_rule}
@@ -544,6 +599,11 @@ USER JUST SAID:
 Reply in {lang_name}:
 """
 
+def is_colloquial_msg(msg):
+    m = msg.lower()
+    slang = ["داداش", "رفیق", "جون", "مخلصم", "چاکریم", "دورتم", "بزن بریم", "حله", "اوکی", "دمت گرم", "چی کاره", "چه خبر", "خوبی", "جانی", "بگو", "ببین", "یه", "می‌خوام", "نمی‌خوام", "برو بابا", "ولش", "عشقی", "دمت", "جونم", "yo", "bro", "dude", "чувак", "бро", "давай", "короче"]
+    return any(s in m for s in slang)
+
 def get_chat_reply(user_id, user_name, user_msg):
     lang = get_lang(user_id)
     status = users_db.get(str(user_id), {}).get("status", "not_registered")
@@ -551,7 +611,8 @@ def get_chat_reply(user_id, user_name, user_msg):
     history_text = "\n".join([f"{'User' if h['role']=='user' else 'You'}: {h['text']}" for h in hist]) if hist else "(no history)"
     preview_detail = "" if is_casual_mode(user_id) else (get_preview_text(lang, detailed=False) or "")
     casual_mode = is_casual_mode(user_id)
-    prompt = get_chat_prompt(lang, user_name, status, history_text, user_msg, preview_detail, casual_mode)
+    colloquial = is_colloquial_msg(user_msg)
+    prompt = get_chat_prompt(lang, user_name, status, history_text, user_msg, preview_detail, casual_mode, colloquial)
     try:
         reply = generate_with_fallback([prompt])
         reply = reply.strip()
@@ -747,11 +808,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if users_db[uid].get("registered") and users_db[uid].get("status") != "rejected":
         if users_db[uid].get("status") == "approved_by_admin":
             fresh = await get_fresh_group_link(context, user.id)
-            await update.message.reply_text(f"👥 {fresh}", reply_markup=get_group_keyboard(fresh, user.id))
+            await update.message.reply_text(f"👥 {fresh}", reply_markup=get_keyboard_or_none(user.id, get_group_keyboard(fresh, user.id)))
             return
         await update.message.reply_text(t(user.id, "already_registered"))
         return
-    await update.message.reply_text(t(user.id, "welcome", name=user.first_name, link=REFERRAL_LINK), reply_markup=get_welcome_keyboard(user.id))
+    await update.message.reply_text(t(user.id, "welcome", name=user.first_name, link=REFERRAL_LINK), reply_markup=get_keyboard_or_none(user.id, get_welcome_keyboard(user.id)))
 
 async def link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(t(update.effective_user.id, "referral", link=REFERRAL_LINK))
@@ -855,14 +916,14 @@ async def preview_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(TEXTS["fa"]["banned_msg"])
         return
     lang = get_lang(update.effective_user.id)
-    sent = await send_preview_photos(context.bot, update.effective_chat.id, lang, get_welcome_keyboard(update.effective_user.id))
+    sent = await send_preview_photos(context.bot, update.effective_chat.id, lang, get_keyboard_or_none(update.effective_user.id, get_welcome_keyboard(update.effective_user.id)))
     if sent:
         return
     preview = get_preview_text(lang, detailed=False)
     if not preview:
-        await update.message.reply_text("هنوز امروز سیگنالی نیومده، ولی تو زودتر ثبت نام کن که اولیش رو از دست ندی 👇", reply_markup=get_welcome_keyboard(update.effective_user.id))
+        await update.message.reply_text("هنوز امروز سیگنالی نیومده، ولی تو زودتر ثبت نام کن که اولیش رو از دست ندی 👇", reply_markup=get_keyboard_or_none(update.effective_user.id, get_welcome_keyboard(update.effective_user.id)))
     else:
-        await update.message.reply_text(f"👀 امروز توی گروه:\n{preview}\n\n📸 عکس‌های TP/SL هنوز نیومده.\n\n🔗 ثبت نام کن:\n{REFERRAL_LINK}", reply_markup=get_welcome_keyboard(update.effective_user.id))
+        await update.message.reply_text(f"👀 امروز توی گروه:\n{preview}\n\n📸 عکس‌های TP/SL هنوز نیومده.\n\n🔗 ثبت نام کن:\n{REFERRAL_LINK}", reply_markup=get_keyboard_or_none(update.effective_user.id, get_welcome_keyboard(update.effective_user.id)))
 
 async def send_reminders(context: ContextTypes.DEFAULT_TYPE):
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -896,7 +957,7 @@ async def send_reminders(context: ContextTypes.DEFAULT_TYPE):
                 msg = "Эй, друг 😅 Ты забыл зарегистрироваться?\nЭто займет всего 2 минуты, потом ты в VIP 👇"
             else:
                 msg = "Hey friend 😅 Did you forget to register?\nIt takes only 2 minutes, then you are in VIP 👇"
-            await context.bot.send_message(chat_id=int(uid), text=msg, reply_markup=get_welcome_keyboard(int(uid)))
+            await context.bot.send_message(chat_id=int(uid), text=msg, reply_markup=get_keyboard_or_none(int(uid), get_welcome_keyboard(int(uid))))
             users_db[uid]["remind_count"] = count + 1
             save_users(users_db)
         except Exception as e:
@@ -1022,15 +1083,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if query.data == "preview":
         lang = get_lang(user.id)
-        sent = await send_preview_photos(context.bot, query.message.chat_id, lang, get_welcome_keyboard(user.id))
+        sent = await send_preview_photos(context.bot, query.message.chat_id, lang, get_keyboard_or_none(user.id, get_welcome_keyboard(user.id)))
         if sent:
-            await query.edit_message_text("عکس‌ها رو فرستادم بالا 👆📸", reply_markup=get_welcome_keyboard(user.id))
+            await query.edit_message_text("عکس‌ها رو فرستادم بالا 👆📸", reply_markup=get_keyboard_or_none(user.id, get_welcome_keyboard(user.id)))
         else:
             preview = get_preview_text(lang, detailed=False)
             if not preview:
-                await query.edit_message_text("هنوز امروز سیگنالی نیومده، ولی تو زودتر ثبت نام کن که اولیش رو از دست ندی 👇", reply_markup=get_welcome_keyboard(user.id))
+                await query.edit_message_text("هنوز امروز سیگنالی نیومده، ولی تو زودتر ثبت نام کن که اولیش رو از دست ندی 👇", reply_markup=get_keyboard_or_none(user.id, get_welcome_keyboard(user.id)))
             else:
-                await query.edit_message_text(f"👀 امروز توی گروه:\n{preview}\n\n📸 عکس‌های TP/SL هنوز نیومده.\n\n🔗 ثبت نام کن:\n{REFERRAL_LINK}", reply_markup=get_welcome_keyboard(user.id))
+                await query.edit_message_text(f"👀 امروز توی گروه:\n{preview}\n\n📸 عکس‌های TP/SL هنوز نیومده.\n\n🔗 ثبت نام کن:\n{REFERRAL_LINK}", reply_markup=get_keyboard_or_none(user.id, get_welcome_keyboard(user.id)))
         return
     if query.data.startswith("lang_"):
         lang = query.data.replace("lang_", "")
@@ -1041,7 +1102,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             users_db[uid]["joined_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
             users_db[uid]["remind_count"] = 0
         save_users(users_db)
-        await query.edit_message_text(t(user.id, "lang_ok") + "\n\n" + t(user.id, "welcome", name=user.first_name, link=REFERRAL_LINK), reply_markup=get_welcome_keyboard(user.id))
+        await query.edit_message_text(t(user.id, "lang_ok") + "\n\n" + t(user.id, "welcome", name=user.first_name, link=REFERRAL_LINK), reply_markup=get_keyboard_or_none(user.id, get_welcome_keyboard(user.id)))
         return
     if query.data.startswith("confirm_"):
         conf = pending_confirms.get(user.id)
@@ -1123,7 +1184,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         if users_db.get(uid, {}).get("status") == "approved_by_admin":
             fresh_link = await get_fresh_group_link(context, user.id)
-            await query.edit_message_text(t(user.id, "approved_msg", link=fresh_link), reply_markup=get_group_keyboard(fresh_link, user.id))
+            await query.edit_message_text(t(user.id, "approved_msg", link=fresh_link), reply_markup=get_keyboard_or_none(user.id, get_group_keyboard(fresh_link, user.id)))
             return
         users_db[uid] = {**users_db.get(uid, {}), "registered": True, "username": user.username or "", "first_name": user.first_name or "", "status": "waiting_admin"}
         save_users(users_db)
@@ -1174,7 +1235,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 try:
                     fresh_link = await get_fresh_group_link(context, int(target_id))
-                    await context.bot.send_message(chat_id=int(target_id), text=t(int(target_id), "approved_msg", link=fresh_link), reply_markup=get_group_keyboard(fresh_link, int(target_id)))
+                    await context.bot.send_message(chat_id=int(target_id), text=t(int(target_id), "approved_msg", link=fresh_link), reply_markup=get_keyboard_or_none(int(target_id), get_group_keyboard(fresh_link, int(target_id))))
                 except:
                     pass
         elif query.data.startswith("reject_"):
@@ -1252,7 +1313,7 @@ async def handle_member_left(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if user.id in pending_joins:
             del pending_joins[user.id]
         try:
-            await context.bot.send_message(chat_id=user.id, text=t(user.id, "removed_msg"), reply_markup=get_welcome_keyboard(user.id))
+            await context.bot.send_message(chat_id=user.id, text=t(user.id, "removed_msg"), reply_markup=get_keyboard_or_none(user.id, get_welcome_keyboard(user.id)))
         except Exception as e:
             print("notify removed error:", e)
 
@@ -1274,7 +1335,21 @@ async def handle_text(update, context):
     txt = update.message.text.strip()
     if is_casual_request(txt):
         set_casual_mode(update.effective_user.id)
+    # برگردوندن دکمه‌ها - اول چک بشه
+    if is_show_buttons_request(txt):
+        show_buttons_for(update.effective_user.id)
+        lang = get_lang(update.effective_user.id)
+        if lang == "fa":
+            msg = "حله، برگردوندمشون ✅👇"
+        elif lang == "ru":
+            msg = "Готово, вернул их ✅👇"
+        else:
+            msg = "Done, brought them back ✅👇"
+        await update.message.reply_text(msg, reply_markup=get_welcome_keyboard(update.effective_user.id))
+        return
+    # مخفی کردن دکمه‌ها - ذخیره بشه و دیگه هیچ جا نشون نده
     if is_hide_buttons_request(txt):
+        hide_buttons_for(update.effective_user.id)
         lang = get_lang(update.effective_user.id)
         if lang == "fa":
             msg = "حله، پاکشون کردم ✅🧹\nحالا بدون دکمه باهام حرف بزن، هر وقت خواستی برگردن بگو «دکمه‌ها رو برگردون»"
@@ -1284,16 +1359,35 @@ async def handle_text(update, context):
             msg = "Done, removed them ✅🧹\nNow chat without buttons, if you want them back say «bring buttons back»"
         await update.message.reply_text(msg, reply_markup=ReplyKeyboardRemove())
         return
+    # معرفی ربات
+    if is_who_are_you(txt):
+        lang = get_lang(update.effective_user.id)
+        colloquial = is_colloquial_msg(txt)
+        await update.message.reply_text(get_self_intro(lang, colloquial))
+        return
+    # کمک ثبت نام - اسکرین بگیر
+    if is_register_help_request(txt):
+        lang = get_lang(update.effective_user.id)
+        users_db.setdefault(uid, {})["awaiting_register_screenshot"] = True
+        save_users(users_db)
+        if lang == "fa":
+            msg = "حله داداش، کمکت می‌کنم 😎\n\nیه اسکرین از همون جایی که گیر کردی بفرست، ببینم کجاش موندی. بعدش قدم به قدم با همون لینک رفرال خودمون بهت یاد میدم:\n\n🔗 " + REFERRAL_LINK + "\n\nاسکرین رو بفرست 👇"
+        elif lang == "ru":
+            msg = "Хорошо, помогу 😎\n\nПришли скрин того места, где застрял, посмотрю где ты. Потом шаг за шагом покажу с нашей реферальной ссылкой:\n\n🔗 " + REFERRAL_LINK + "\n\nПришли скрин 👇"
+        else:
+            msg = "Okay, I'll help you 😎\n\nSend me a screenshot of where you are stuck, I'll see where you are. Then step by step I'll show you with our referral link:\n\n🔗 " + REFERRAL_LINK + "\n\nSend screenshot 👇"
+        await update.message.reply_text(msg)
+        return
     if is_preview_request(txt) and not users_db.get(uid, {}).get("registered"):
         lang = get_lang(update.effective_user.id)
-        sent = await send_preview_photos(context.bot, update.effective_chat.id, lang, get_welcome_keyboard(update.effective_user.id))
+        sent = await send_preview_photos(context.bot, update.effective_chat.id, lang, get_keyboard_or_none(update.effective_user.id, get_welcome_keyboard(update.effective_user.id)))
         if sent:
             return
         preview = get_preview_text(lang, detailed=False)
         if not preview:
-            await update.message.reply_text("هنوز امروز سیگنالی نیومده، ولی تو زودتر ثبت نام کن که اولیش رو از دست ندی 👇", reply_markup=get_welcome_keyboard(update.effective_user.id))
+            await update.message.reply_text("هنوز امروز سیگنالی نیومده، ولی تو زودتر ثبت نام کن که اولیش رو از دست ندی 👇", reply_markup=get_keyboard_or_none(update.effective_user.id, get_welcome_keyboard(update.effective_user.id)))
         else:
-            await update.message.reply_text(f"👀 امروز توی گروه:\n{preview}\n\n📸 عکس‌های TP/SL هنوز نیومده.\n\n🔗 ثبت نام کن:\n{REFERRAL_LINK}", reply_markup=get_welcome_keyboard(update.effective_user.id))
+            await update.message.reply_text(f"👀 امروز توی گروه:\n{preview}\n\n📸 عکس‌های TP/SL هنوز نیومده.\n\n🔗 ثبت نام کن:\n{REFERRAL_LINK}", reply_markup=get_keyboard_or_none(update.effective_user.id, get_welcome_keyboard(update.effective_user.id)))
         return
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     reply = get_chat_reply(update.effective_user.id, update.effective_user.first_name or "Friend", txt)
@@ -1303,24 +1397,63 @@ async def handle_text(update, context):
             reply = reply + get_casual_reminder(lang)
             mark_prompted(update.effective_user.id)
         if not users_db.get(uid, {}).get("registered"):
-            if is_casual_mode(update.effective_user.id):
-                await update.message.reply_text(reply)
-            else:
-                await update.message.reply_text(reply, reply_markup=get_welcome_keyboard(update.effective_user.id))
+            await update.message.reply_text(reply, reply_markup=get_keyboard_or_none(update.effective_user.id, get_welcome_keyboard(update.effective_user.id)))
         else:
             await update.message.reply_text(reply)
     else:
-        await update.message.reply_text(t(update.effective_user.id, "need_register", link=REFERRAL_LINK), reply_markup=get_welcome_keyboard(update.effective_user.id))
+        await update.message.reply_text(t(update.effective_user.id, "need_register", link=REFERRAL_LINK), reply_markup=get_keyboard_or_none(update.effective_user.id, get_welcome_keyboard(update.effective_user.id)))
 
 async def handle_photo(update, context):
     if update.message.chat.type != "private":
         return
-    if not is_admin(update):
+    if is_admin(update):
+        photo_id = update.message.photo[-1].file_id
+        caption = update.message.caption or ""
+        pending_items[update.effective_user.id] = {"type": "photo", "photo_id": photo_id, "caption": caption}
+        await update.message.reply_text("این چیه؟ 👇", reply_markup=get_choice_keyboard())
         return
-    photo_id = update.message.photo[-1].file_id
-    caption = update.message.caption or ""
-    pending_items[update.effective_user.id] = {"type": "photo", "photo_id": photo_id, "caption": caption}
-    await update.message.reply_text("این چیه؟ 👇", reply_markup=get_choice_keyboard())
+    # کاربر عادی - اسکرین برای کمک ثبت نام
+    uid = str(update.effective_user.id)
+    if users_db.get(uid, {}).get("awaiting_register_screenshot"):
+        users_db[uid]["awaiting_register_screenshot"] = False
+        save_users(users_db)
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+        try:
+            photo_id = update.message.photo[-1].file_id
+            file = await context.bot.get_file(photo_id)
+            photo_bytes = await file.download_as_bytearray()
+            img_part = genai.types.Part.from_bytes(data=bytes(photo_bytes), mime_type="image/jpeg")
+            lang = get_lang(update.effective_user.id)
+            lang_name = {"fa": "Persian colloquial slang like a friend", "en": "English casual", "ru": "Russian casual"}.get(lang, "Persian colloquial")
+            prompt = f"""Look at this screenshot. User is stuck in TrueTrade registration.
+Tell him in {lang_name}:
+1. Where exactly he is stuck (what screen, what field, what error)
+2. Step by step what to do next, in very simple short steps, like a friend
+3. IMPORTANT: He MUST register with this referral link: {REFERRAL_LINK} - code {REFERRAL_CODE}. If he is not on this link, tell him to close and open this link again.
+4. Keep it SHORT, max 5 steps, mobile friendly, colloquial.
+If screenshot is not about registration, say so and ask for correct screenshot.
+"""
+            guide = generate_with_fallback([prompt, img_part])
+            await update.message.reply_text(guide)
+            # بعد از راهنمایی، دوباره بپرس اسکرین بعدی رو بفرسته اگه هنوز گیر کرده
+            if lang == "fa":
+                await update.message.reply_text("اگه بازم گیر کردی، اسکرین بعدی رو بفرست، باز باهم میریم جلو 😎")
+            elif lang == "ru":
+                await update.message.reply_text("Если еще застрял, пришли следующий скрин, пойдем дальше вместе 😎")
+            else:
+                await update.message.reply_text("If you're still stuck, send next screenshot, we'll go together 😎")
+        except Exception as e:
+            print("register screenshot error:", e)
+            await update.message.reply_text("اسکرینت رو دیدم ولی نتونستم بخونمش، یه بار دیگه واضح‌تر بفرست 🙏")
+        return
+    # کاربر عادی عکس دیگه فرستاد - راهنمایی کن
+    lang = get_lang(update.effective_user.id)
+    if lang == "fa":
+        await update.message.reply_text("عکست رو دیدم 👀 اگه برای ثبت نام گیر کردی، بگو «کمک ثبت نام» تا قدم به قدم باهم بریم جلو 😎")
+    elif lang == "ru":
+        await update.message.reply_text("Вижу фото 👀 Если застрял с регистрацией, скажи «помоги с регистрацией», пойдем вместе 😎")
+    else:
+        await update.message.reply_text("I see your photo 👀 If you're stuck with registration, say «help register» and we'll go together 😎")
 
 async def handle_voice(update, context):
     if update.message.chat.type != "private":
@@ -1345,21 +1478,27 @@ async def handle_voice(update, context):
         transcribed = generate_with_fallback([f"Transcribe this voice message to text in {lang_name}. Output ONLY the transcribed text, nothing else.", audio_part])
         if not transcribed or len(transcribed.strip()) < 2:
             transcribed = "..."
+        # اگه وویس گفت دکمه‌ها رو پاک کن
+        if is_hide_buttons_request(transcribed):
+            hide_buttons_for(update.effective_user.id)
+            await update.message.reply_text("حله، پاکشون کردم ✅🧹", reply_markup=ReplyKeyboardRemove())
+            return
+        if is_show_buttons_request(transcribed):
+            show_buttons_for(update.effective_user.id)
+            await update.message.reply_text("حله، برگردوندمشون ✅👇", reply_markup=get_welcome_keyboard(update.effective_user.id))
+            return
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
         reply = get_chat_reply(update.effective_user.id, update.effective_user.first_name or "Friend", f"[Voice message, user said]: {transcribed}")
         if reply:
             if can_prompt_in_chat(update.effective_user.id) and not is_casual_mode(update.effective_user.id) and not users_db.get(uid, {}).get("registered"):
                 reply = reply + get_casual_reminder(lang)
                 mark_prompted(update.effective_user.id)
-            if is_casual_mode(update.effective_user.id):
-                await update.message.reply_text(reply)
-            else:
-                await update.message.reply_text(reply, reply_markup=get_welcome_keyboard(update.effective_user.id))
+            await update.message.reply_text(reply, reply_markup=get_keyboard_or_none(update.effective_user.id, get_welcome_keyboard(update.effective_user.id)))
         else:
-            await update.message.reply_text(t(update.effective_user.id, "need_register", link=REFERRAL_LINK))
+            await update.message.reply_text(t(update.effective_user.id, "need_register", link=REFERRAL_LINK), reply_markup=get_keyboard_or_none(update.effective_user.id, get_welcome_keyboard(update.effective_user.id)))
     except Exception as e:
         print("voice error:", e)
-        await update.message.reply_text(t(update.effective_user.id, "need_register", link=REFERRAL_LINK), reply_markup=get_welcome_keyboard(update.effective_user.id))
+        await update.message.reply_text(t(update.effective_user.id, "need_register", link=REFERRAL_LINK), reply_markup=get_keyboard_or_none(update.effective_user.id, get_welcome_keyboard(update.effective_user.id)))
 
 def main():
     request = HTTPXRequest(connect_timeout=30, read_timeout=30, write_timeout=30, pool_timeout=30)

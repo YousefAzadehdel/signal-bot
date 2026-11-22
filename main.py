@@ -27,7 +27,6 @@ GEMINI_KEY = os.environ.get("GEMINI_KEY", "")
 GROUP_ID = -1004453681781
 ADMIN_IDS = [5386696088]
 
-# ===== رفرال تو =====
 REFERRAL_LINK = "https://www.thetruetrade.io/r/37681671"
 REFERRAL_CODE = "37681671"
 
@@ -53,7 +52,6 @@ users_db = load_users()
 pending_joins = {}
 
 MODELS = ["gemini-3.5-flash-lite", "gemini-3.5-flash"]
-
 client = genai.Client(api_key=GEMINI_KEY)
 
 def generate_with_fallback(contents):
@@ -267,20 +265,20 @@ def is_valid_signal(text):
 def is_admin(update):
     return update.effective_user and update.effective_user.id in ADMIN_IDS
 
-# ===== رفرال + تایید دستی =====
+# ===== رفرال + تایید دستی - سه زبانه =====
 
 def get_welcome_keyboard():
     keyboard = [
-        [InlineKeyboardButton("🔗 ثبت نام با لینک رفرال", url=REFERRAL_LINK)],
-        [InlineKeyboardButton("✅ ثبت نام کردم", callback_data="registered")],
+        [InlineKeyboardButton("🔗 ثبت نام / Sign Up / Регистрация", url=REFERRAL_LINK)],
+        [InlineKeyboardButton("✅ ثبت نام کردم / I Registered / Я зарегистрировался", callback_data="registered")],
     ]
     return InlineKeyboardMarkup(keyboard)
 
 def get_admin_keyboard(user_id):
     keyboard = [
         [
-            InlineKeyboardButton("✅ تایید کن - ببر توی گروه", callback_data=f"approve_{user_id}"),
-            InlineKeyboardButton("❌ رد کن", callback_data=f"reject_{user_id}"),
+            InlineKeyboardButton("✅ تایید کن / Approve / Одобрить", callback_data=f"approve_{user_id}"),
+            InlineKeyboardButton("❌ رد کن / Reject / Отклонить", callback_data=f"reject_{user_id}"),
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -289,32 +287,46 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if is_admin(update):
         await update.message.reply_text(
-            "سلام ادمین! سیگنال رو بفرست تا بفرستم توی گروه ✅\nمتن، عکس، یا عکس + متن - هر 3 تاش رو می‌خونم\n\nبرای گرفتن لینک رفرال بزن /link"
+            "سلام ادمین! / Hello Admin! / Привет, админ!\n"
+            "سیگنال رو بفرست تا بفرستم توی گروه ✅\n"
+            "Send signal, I will forward it to group ✅\n"
+            "Отправь сигнал, я перешлю его в группу ✅\n\n"
+            "برای گرفتن لینک رفرال بزن /link"
         )
         return
 
     uid = str(user.id)
-    # فیکس: اگه رد شده بود، بذار دوباره بتونه ثبت نام کنه
     if uid in users_db and users_db[uid].get("registered") and users_db[uid].get("status") != "rejected":
         await update.message.reply_text(
-            "تو قبلاً ثبت نامت رو اعلام کردی ✅\nحالا منتظر تایید ادمین باش.\nبعد از اینکه ادمین تاییدت کرد، درخواست عضویت بده."
+            "تو قبلاً ثبت نامت رو اعلام کردی ✅\n"
+            "You already announced your registration ✅\n"
+            "Вы уже сообщили о регистрации ✅\n\n"
+            "حالا منتظر تایید ادمین باش.\n"
+            "Now wait for admin approval.\n"
+            "Теперь ждите одобрения админа."
         )
         return
 
     await update.message.reply_text(
-        f"سلام {user.first_name} 👋\n\n"
-        "به ربات سیگنال VIP خوش اومدی!\n\n"
-        "برای ورود به گروه VIP باید اول از لینک زیر توی TrueTrade ثبت نام کنی:\n\n"
+        f"سلام {user.first_name} 👋 / Hello {user.first_name} 👋 / Привет, {user.first_name} 👋\n\n"
+        "به ربات سیگنال VIP خوش اومدی!\n"
+        "Welcome to VIP Signal Bot!\n"
+        "Добро пожаловать в VIP Signal Bot!\n\n"
+        "برای ورود به گروه VIP باید اول از لینک زیر توی TrueTrade ثبت نام کنی:\n"
+        "To enter VIP group, first register on TrueTrade with link below:\n"
+        "Чтобы войти в VIP-группу, сначала зарегистрируйтесь на TrueTrade по ссылке ниже:\n\n"
         f"🔗 {REFERRAL_LINK}\n\n"
         "مراحل:\n"
-        "1️⃣ روی دکمه ثبت نام بزن و حسابت رو بساز\n"
-        "2️⃣ برگرد اینجا و بزن «ثبت نام کردم»\n"
-        "3️⃣ ادمین چک می‌کنه و اگه واقعاً ثبت نام کرده باشی تاییدت می‌کنه ✅",
+        "Steps:\n"
+        "Шаги:\n"
+        "1️⃣ روی دکمه ثبت نام بزن و حسابت رو بساز / Click Register and create account / Нажмите «Регистрация» и создайте аккаунт\n"
+        "2️⃣ برگرد اینجا و بزن «ثبت نام کردم» / Come back and press «I Registered» / Вернитесь и нажмите «Я зарегистрировался»\n"
+        "3️⃣ ادمین چک می‌کنه و اگه واقعاً ثبت نام کرده باشی تاییدت می‌کنه ✅ / Admin will check and approve if you really registered ✅ / Админ проверит и одобрит, если вы действительно зарегистрировались ✅",
         reply_markup=get_welcome_keyboard()
     )
 
 async def link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"لینک رفرال تو:\n{REFERRAL_LINK}")
+    await update.message.reply_text(f"لینک رفرال تو / Your Referral Link / Ваша реферальная ссылка:\n{REFERRAL_LINK}")
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -325,32 +337,47 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data == "registered":
         if user.id in ADMIN_IDS:
             return
-        # اگه قبلا تایید شده بود، دوباره به حالت انتظار برنگرده
         if users_db.get(uid, {}).get("status") == "approved_by_admin":
-            await query.edit_message_text("تو قبلاً توسط ادمین تایید شدی ✅\nحالا درخواست عضویت گروه رو بده.")
+            await query.edit_message_text(
+                "تو قبلاً توسط ادمین تایید شدی ✅\n"
+                "You were already approved by admin ✅\n"
+                "Вы уже были одобрены админом ✅\n\n"
+                "حالا درخواست عضویت گروه رو بده.\n"
+                "Now send join request to group.\n"
+                "Теперь отправьте запрос на вступление в группу."
+            )
             return
         users_db[uid] = {"registered": True, "username": user.username or "", "first_name": user.first_name or "", "status": "waiting_admin"}
         save_users(users_db)
         print(f"User {uid} waiting for admin approval", flush=True)
 
         await query.edit_message_text(
-            "ثبت شد ✅\n\n"
+            "ثبت شد ✅ / Registered ✅ / Зарегистрировано ✅\n\n"
             "درخواستت رفت برای ادمین.\n"
+            "Your request sent to admin.\n"
+            "Ваш запрос отправлен админу.\n\n"
             "ادمین توی TrueTrade چک می‌کنه که با لینک رفرال ثبت نام کرده باشی.\n"
-            "اگه تایید بشی، بهت خبر میدم و بعد می‌تونی درخواست عضویت گروه رو بدی.\n\n"
-            "لطفاً صبور باش 🙏"
+            "Admin will check on TrueTrade if you registered with referral link.\n"
+            "Админ проверит на TrueTrade, зарегистрировались ли вы по реферальной ссылке.\n\n"
+            "اگه تایید بشی، بهت خبر میدم و بعد می‌تونی درخواست عضویت گروه رو بدی.\n"
+            "If approved, I will notify you and then you can send join request.\n"
+            "Если одобрят, я уведомлю вас, и вы сможете отправить запрос на вступление.\n\n"
+            "لطفاً صبور باش 🙏 / Please be patient 🙏 / Пожалуйста, наберитесь терпения 🙏"
         )
 
         for admin_id in ADMIN_IDS:
             try:
                 await context.bot.send_message(
                     chat_id=admin_id,
-                    text=f"🆕 درخواست ورود جدید:\n\n"
-                         f"👤 {user.first_name} (@{user.username or 'بدون یوزرنیم'})\n"
+                    text=f"🆕 درخواست ورود جدید / New Entry Request / Новый запрос на вход:\n\n"
+                         f"👤 {user.first_name} (@{user.username or 'بدون یوزرنیم / No username / Без юзернейма'})\n"
                          f"🆔 ID: {user.id}\n"
-                         f"🔗 ادعا می‌کنه با لینک رفرال ثبت نام کرده: {REFERRAL_CODE}\n\n"
+                         f"🔗 ادعا می‌کنه با لینک رفرال ثبت نام کرده: {REFERRAL_CODE}\n"
+                         f"🔗 Claims registered with referral link: {REFERRAL_CODE}\n"
+                         f"🔗 Утверждает, что зарегистрировался по реферальной ссылке: {REFERRAL_CODE}\n\n"
                          f"برو توی پنل TrueTrade چک کن.\n"
-                         f"اگه واقعاً ثبت نام کرده بود بزن تایید، اگه نه بزن رد.",
+                         f"Check in TrueTrade panel.\n"
+                         f"Проверьте в панели TrueTrade.",
                     reply_markup=get_admin_keyboard(user.id)
                 )
             except Exception as e:
@@ -359,7 +386,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query.data.startswith("approve_") or query.data.startswith("reject_"):
         if user.id not in ADMIN_IDS:
-            await query.answer("فقط ادمین می‌تونه این کار رو بکنه", show_alert=True)
+            await query.answer("فقط ادمین می‌تونه این کار رو بکنه / Only admin / Только админ", show_alert=True)
             return
 
         target_id = query.data.split("_")[1]
@@ -369,23 +396,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             users_db[target_id] = {**target_data, "status": "approved_by_admin"}
             save_users(users_db)
             await query.edit_message_text(
-                f"✅ تایید شد:\n{target_data.get('first_name','')} (@{target_data.get('username','')}) - ID: {target_id}\n\n"
+                f"✅ تایید شد / Approved / Одобрено:\n{target_data.get('first_name','')} (@{target_data.get('username','')}) - ID: {target_id}\n\n"
                 f"حالا اگه درخواست عضویت گروه داده باشه، خودم تاییدش می‌کنم.\n"
-                f"اگه هنوز درخواست نداده، بهش بگو درخواست بده."
+                f"If he sent join request, I will approve it.\n"
+                f"Если он отправил запрос на вступление, я одобрю его."
             )
             if target_id in pending_joins:
                 try:
                     chat_id = pending_joins[target_id]
                     await context.bot.approve_chat_join_request(chat_id=chat_id, user_id=int(target_id))
                     del pending_joins[target_id]
-                    await context.bot.send_message(chat_id=int(target_id), text="تبریک! ادمین تاییدت کرد و وارد گروه VIP شدی 🎉")
+                    await context.bot.send_message(chat_id=int(target_id), text="تبریک! ادمین تاییدت کرد و وارد گروه VIP شدی 🎉\nCongrats! Admin approved you and you joined VIP group 🎉\nПоздравляем! Админ одобрил вас, и вы вошли в VIP-группу 🎉")
                 except Exception as e:
                     print("auto approve pending error:", e)
             else:
                 try:
                     await context.bot.send_message(
                         chat_id=int(target_id),
-                        text="تبریک! ادمین ثبت نامت رو تایید کرد ✅\n\nحالا برو روی لینک گروه بزن و درخواست عضویت بده تا وارد بشی."
+                        text="تبریک! ادمین ثبت نامت رو تایید کرد ✅\nCongrats! Admin approved your registration ✅\nПоздравляем! Админ одобрил вашу регистрацию ✅\n\nحالا برو روی لینک گروه بزن و درخواست عضویت بده تا وارد بشی.\nNow click group link and send join request to enter.\nТеперь нажмите на ссылку группы и отправьте запрос на вступление."
                     )
                 except:
                     pass
@@ -394,12 +422,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             users_db[target_id] = {**target_data, "status": "rejected"}
             save_users(users_db)
             await query.edit_message_text(
-                f"❌ رد شد:\n{target_data.get('first_name','')} (@{target_data.get('username','')}) - ID: {target_id}"
+                f"❌ رد شد / Rejected / Отклонено:\n{target_data.get('first_name','')} (@{target_data.get('username','')}) - ID: {target_id}"
             )
             try:
                 await context.bot.send_message(
                     chat_id=int(target_id),
-                    text="متاسفانه درخواستت رد شد ❌\n\nادمین توی TrueTrade چک کرد و ثبت نامت با لینک رفرال پیدا نشد.\nلطفاً با لینک درست ثبت نام کن و دوباره تلاش کن:\n" + REFERRAL_LINK
+                    text="متاسفانه درخواستت رد شد ❌\nUnfortunately your request was rejected ❌\nК сожалению, ваш запрос был отклонён ❌\n\nادمین توی TrueTrade چک کرد و ثبت نامت با لینک رفرال پیدا نشد.\nAdmin checked on TrueTrade and your registration with referral link was not found.\nАдмин проверил на TrueTrade, и ваша регистрация по реферальной ссылке не найдена.\nلطفاً با لینک درست ثبت نام کن و دوباره تلاش کن:\nPlease register with correct link and try again:\nПожалуйста, зарегистрируйтесь по правильной ссылке и попробуйте снова:\n" + REFERRAL_LINK
                 )
             except:
                 pass
@@ -415,14 +443,13 @@ async def handle_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE
     req = update.chat_join_request
     user_id = str(req.from_user.id)
     print(f"Join request from {user_id} - @{req.from_user.username}", flush=True)
-
     user_data = users_db.get(user_id, {})
 
     if user_data.get("status") == "approved_by_admin":
         try:
             await req.approve()
             print(f"Approved {user_id} - already approved by admin", flush=True)
-            await context.bot.send_message(chat_id=req.from_user.id, text="تبریک! وارد گروه VIP شدی 🎉")
+            await context.bot.send_message(chat_id=req.from_user.id, text="تبریک! وارد گروه VIP شدی 🎉\nCongrats! You joined VIP group 🎉\nПоздравляем! Вы вошли в VIP-группу 🎉")
         except Exception as e:
             print("approve error:", e)
         return
@@ -431,7 +458,7 @@ async def handle_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         await context.bot.send_message(
             chat_id=req.from_user.id,
-            text="درخواست عضویتت رسید ✅\nمنتظر تایید ادمین باش.\nادمین اول توی TrueTrade چک می‌کنه که ثبت نام کرده باشی."
+            text="درخواست عضویتت رسید ✅\nYour join request received ✅\nВаш запрос на вступление получен ✅\nمنتظر تایید ادمین باش.\nWait for admin approval.\nДождитесь одобрения админа."
         )
     except:
         pass
@@ -440,11 +467,13 @@ async def handle_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE
         try:
             await context.bot.send_message(
                 chat_id=admin_id,
-                text=f"📩 درخواست عضویت جدید توی گروه:\n\n"
-                     f"👤 {req.from_user.first_name} (@{req.from_user.username or 'بدون یوزرنیم'})\n"
+                text=f"📩 درخواست عضویت جدید توی گروه / New Join Request / Новый запрос на вступление:\n\n"
+                     f"👤 {req.from_user.first_name} (@{req.from_user.username or 'بدون یوزرنیم / No username / Без юзернейма'})\n"
                      f"🆔 ID: {user_id}\n"
-                     f"وضعیت ثبت نام: {user_data.get('status','هنوز دکمه ثبت نام کردم رو نزده')}\n\n"
-                     f"اگه توی TrueTrade تاییدش کردی، بزن تایید:",
+                     f"وضعیت ثبت نام / Registration status / Статус регистрации: {user_data.get('status','هنوز دکمه ثبت نام کردم رو نزده / Not clicked Registered yet / Еще не нажал «Я зарегистрировался»')}\n\n"
+                     f"اگه توی TrueTrade تاییدش کردی، بزن تایید:\n"
+                     f"If you approved him on TrueTrade, press Approve:\n"
+                     f"Если вы одобрили его на TrueTrade, нажмите «Одобрить»:",
                 reply_markup=get_admin_keyboard(int(user_id))
             )
         except Exception as e:
@@ -455,41 +484,41 @@ async def handle_text(update, context):
         return
     if not is_admin(update):
         await update.message.reply_text(
-            f"برای ورود به گروه VIP اول باید ثبت نام کنی 👇\n{REFERRAL_LINK}\n\nبعد از ثبت نام بزن /start"
+            f"برای ورود به گروه VIP اول باید ثبت نام کنی 👇\nTo enter VIP group, first register 👇\nЧтобы войти в VIP-группу, сначала зарегистрируйтесь 👇\n{REFERRAL_LINK}\n\nبعد از ثبت نام بزن /start\nAfter registration press /start\nПосле регистрации нажмите /start"
         )
         return
     txt = update.message.text.strip()
     if len(txt) < 10 or not re.search(r'\d', txt):
-        await update.message.reply_text("این سیگنال نیست ❌\nسیگنال رو با ارز، ورود، حد سود و حد ضرر بفرست.")
+        await update.message.reply_text("این سیگنال نیست ❌\nThis is not a signal ❌\nЭто не сигнал ❌")
         return
-    await update.message.reply_text("دارم تحلیل میکنم... ⏳")
+    await update.message.reply_text("دارم تحلیل میکنم... ⏳\nAnalyzing... ⏳\nАнализирую... ⏳")
     try:
         fast = parse_farsi_signal(txt)
         if fast and is_valid_signal(fast):
             final = fast + FOOTER
             await context.bot.send_message(chat_id=GROUP_ID, text=final)
-            await update.message.reply_text("فرستادم توی گروه ✅")
+            await update.message.reply_text("فرستادم توی گروه ✅\nSent to group ✅\nОтправлено в группу ✅")
             return
         raw = generate_with_fallback([PROMPT + "\n\nSignal text:\n" + txt])
         if "NOT_A_SIGNAL" in raw:
-            await update.message.reply_text("این سیگنال نیست ❌")
+            await update.message.reply_text("این سیگنال نیست ❌\nThis is not a signal ❌\nЭто не сигнал ❌")
             return
         clean = normalize_signal(raw)
         if not is_valid_signal(clean):
-            await update.message.reply_text("این سیگنال نیست ❌\nنتونستم ارز، ورود و حد سود رو پیدا کنم.")
+            await update.message.reply_text("این سیگنال نیست ❌\nThis is not a signal ❌\nЭто не сигнал ❌")
             return
         final = clean + FOOTER
         await context.bot.send_message(chat_id=GROUP_ID, text=final)
-        await update.message.reply_text("فرستادم توی گروه ✅")
+        await update.message.reply_text("فرستادم توی گروه ✅\nSent to group ✅\nОтправлено в группу ✅")
     except Exception as e:
-        await update.message.reply_text(f"خطا: {e}")
+        await update.message.reply_text(f"خطا / Error / Ошибка: {e}")
 
 async def handle_photo(update, context):
     if update.message.chat.type != "private":
         return
     if not is_admin(update):
         return
-    await update.message.reply_text("دارم عکس رو میخونم... ⏳")
+    await update.message.reply_text("دارم عکس رو میخونم... ⏳\nReading photo... ⏳\nЧитаю фото... ⏳")
     try:
         photos = update.message.photo
         photo_obj = photos[-1]
@@ -503,24 +532,24 @@ async def handle_photo(update, context):
             if fast and is_valid_signal(fast):
                 final = fast + FOOTER
                 await context.bot.send_message(chat_id=GROUP_ID, text=final)
-                await update.message.reply_text("فرستادم توی گروه ✅")
+                await update.message.reply_text("فرستادم توی گروه ✅\nSent to group ✅\nОтправлено в группу ✅")
                 return
             raw = generate_with_fallback([PROMPT + f"\n\nCaption text (use this too):\n{caption}\n\nAlso read text inside image.", img_part])
         else:
             raw = generate_with_fallback([PROMPT_CHART_ONLY, img_part])
 
         if "NOT_A_SIGNAL" in raw:
-            await update.message.reply_text("این عکس سیگنال نیست ❌")
+            await update.message.reply_text("این عکس سیگنال نیست ❌\nThis photo is not a signal ❌\nЭто фото не сигнал ❌")
             return
         clean = normalize_signal(raw)
         if not is_valid_signal(clean):
-            await update.message.reply_text("نتونستم از عکس سیگنال دربیارم ❌\nمطمئن شو عکس چارت با اعداد واضحه.")
+            await update.message.reply_text("نتونستم از عکس سیگنال دربیارم ❌\nCould not extract signal from photo ❌\nНе удалось извлечь сигнал из фото ❌")
             return
         final = clean + FOOTER
         await context.bot.send_message(chat_id=GROUP_ID, text=final)
-        await update.message.reply_text("فرستادم توی گروه ✅")
+        await update.message.reply_text("فرستادم توی گروه ✅\nSent to group ✅\nОтправлено в группу ✅")
     except Exception as e:
-        await update.message.reply_text(f"خطا: {e}")
+        await update.message.reply_text(f"خطا / Error / Ошибка: {e}")
 
 def main():
     request = HTTPXRequest(connect_timeout=30, read_timeout=30, write_timeout=30, pool_timeout=30)

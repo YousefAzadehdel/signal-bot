@@ -102,7 +102,6 @@ def get_topic(uid): return users_db.get(str(uid), {}).get("topic", "onboarding")
 def set_topic(uid, topic):
     users_db.setdefault(str(uid), {})["topic"] = topic; save_users(users_db)
 
-# ===== فیکس قطعی سلام تکراری - برای هر 3 مسیر =====
 def clean_all_replies(reply, is_first_message=False):
     if not reply: return reply
     if is_first_message: return reply
@@ -1113,9 +1112,16 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(ChatJoinRequestHandler(handle_join_request))
     app.add_handler(ChatMemberHandler(handle_chat_member, chat_member_types=["member", "left", "kicked", "banned"]))
+    # ===== فیکس JobQueue - اگه نصب نباشه کرش نمی‌کنه =====
     job_queue = app.job_queue
-    job_queue.run_repeating(send_reminders, interval=3600, first=10)
-    job_queue.run_repeating(send_daily_group_prompt, interval=3600, first=60)
+    if job_queue is not None:
+        try:
+            job_queue.run_repeating(send_reminders, interval=3600, first=10)
+            job_queue.run_repeating(send_daily_group_prompt, interval=3600, first=60)
+        except Exception as e:
+            print(f"JobQueue setup failed: {e}")
+    else:
+        print("JobQueue not installed - reminders disabled, bot still works")
     print("Bot started...")
     app.run_polling(drop_pending_updates=False)
 

@@ -145,6 +145,17 @@ def show_buttons_for(uid):
 def should_show_keyboard(uid): return not users_db.get(str(uid), {}).get("hide_buttons", False)
 def get_keyboard_or_none(uid, keyboard): return keyboard if should_show_keyboard(uid) else None
 
+# ===== جاگذاری شده: توضیح صرافی =====
+EXCHANGE_INFO = {
+    "fa": "صرافی The True Trade یه صرافی غیرمتمرکز (DEX) برای معاملات فیوچرز دائمی کریپتوئه، روی شبکه BNB Chain.\n\nخوبی‌هاش:\n✅ بدون احراز هویت (KYC) - فقط با کیف پول یا ایمیل وصل میشی\n✅ پولت دست خودته، صرافی پولت رو نگه نمی‌داره\n✅ بیش از ۵۰ ارز، تا اهرم 1001x\n✅ کارمزد ثابت و پایین، بدون کارمزد فاندینگ (Funding) - یعنی اگه معامله رو باز نگه داری هر ۸ ساعت ازت پول کم نمیشه\n✅ حالت دمو داره، می‌تونی اول با پول مجازی تمرین کنی\n\nو اگه با کد 37681671 ثبت نام کنی، هم وارد گروه VIP ما میشی، هم توی همه معاملاتت کارمزد کمتری میدی.",
+    "en": "The True Trade is a decentralized exchange (DEX) for crypto perpetual futures, on BNB Chain.\n\nWhy it's good:\n✅ No KYC - just connect with wallet or email\n✅ Non-custodial - your money stays with you\n✅ 50+ coins, up to 1001x leverage\n✅ Flat low fee, no funding fees - your open trade doesn't get charged every 8 hours\n✅ Demo mode to practice with virtual money\n\nAnd if you register with code 37681671, you join our VIP group AND pay less fee on all your trades.",
+    "ru": "The True Trade — это децентрализованная биржа (DEX) для бессрочных фьючерсов на крипту, на сети BNB Chain.\n\nПлюсы:\n✅ Без KYC - просто подключи кошелек или email\n✅ Некастодиальная - деньги остаются у тебя\n✅ 50+ монет, плечо до 1001x\n✅ Фиксированная низкая комиссия, без фандинга - открытая сделка не съедает деньги каждые 8 часов\n✅ Демо-режим для практики на виртуальных деньгах\n\nА если зарегистрируешься с кодом 37681671, ты попадешь в нашу VIP-группу И будешь платить меньше комиссии на всех сделках."
+}
+def is_exchange_question(msg):
+    m = msg.lower()
+    kws = ["این چه صرافیه", "این صرافی چیه", "صرافی چیه", "truetrade چیه", "true trade چیه", "the true trade چیه", "این چه صرافی هست", "what is this exchange", "what is truetrade", "what is true trade", "что это за биржа", "что такое truetrade", "что такое the true trade"]
+    return any(k in m for k in kws)
+
 def detect_topic(msg):
     m = msg.lower()
     if any(k in m for k in ["ترید نمیخوام", "از ترید نمیخوام", "ترید رو بذار کنار", "نمیخوام از ترید بگم", "من از ترید نمیخوام", "نمیخوام ترید", "не хочу про трейдинг", "don't want trading"]):
@@ -330,26 +341,28 @@ PROMPT_CLASSIFY = """Look at this image / text. Answer with ONE word only:
 - If it is neither -> UNKNOWN
 Output ONLY one word: SIGNAL or RESULT or UNKNOWN"""
 
+# ===== جاگذاری شده: فیکس کد معرف =====
 PROMPT_REGISTER_SCREEN = """
 You are helping user register on TrueTrade. Look at this screenshot CAREFULLY.
 Rules - HARD, NEVER BREAK:
-- NEVER guess. If you cannot clearly read the Referral Code field, you MUST say "I cannot see it clearly".
-- NEVER say "referral code is correct" unless you LITERALLY see numbers 37681671 in the image.
-- If field is empty, blurry, dark, cut off, or covered -> say: "کد معرف خالیه / دیده نمیشه"
-- If you see a DIFFERENT code, say what code you see, don't say it's correct.
+- PLACEHOLDER IS NOT A VALUE: If the Referral field shows grey text like "کد معرف را وارد کنید (اختیاری)" / "Enter referral code" / "کد معرف" - that means the field is EMPTY. NEVER repeat the placeholder as if user typed it. Say EXACTLY: "کد معرف: خالیه"
+- NEVER guess. If you cannot clearly read the field, say "دیده نمیشه".
+- NEVER say "referral code is correct" unless you LITERALLY see numbers 37681671 typed in the field.
+- If you see a DIFFERENT code, say what code you see.
 - If you see 37681671 clearly, then say it's correct.
 - NEVER greet. NEVER say "Salam / Hello / Privet / من رهاورد هستم". Go directly to answer.
 - Answer in user's language, short, step by step.
 Check these 3 things:
-1. Email field - filled or empty?
-2. Password field - filled or empty?
-3. Referral Code field - EXACTLY what is written? Empty? 37681671? Or something else?
-Output format:
+1. Email field - filled or empty? Do NOT read placeholder, only typed text.
+2. Password field - filled or empty? Dots = filled.
+3. Referral Code field - EXACTLY: "خالیه" OR "37681671" OR other code you see. If placeholder only -> خالیه.
+Output format - EXACTLY like this:
 - ایمیلت: پر شده / خالیه
 - رمز: پر شده / خالیه
-- کد معرف: [دقیقاً چیزی که می‌بینی، اگه خالیه بگو خالیه]
-Then say what user should do next in ONE line.
-If image is too dark/blurry, ask user to send a clearer screenshot, cropped on Referral field.
+- کد معرف: خالیه / 37681671 / [کد دیگه‌ای که می‌بینی]
+Then ONE line:
+"کد معرف 37681671 رو توی همین کادر بزن. شرط ورود به گروه VIP همینه، و با همین کد توی همه معاملاتت کارمزد کمتری پرداخت می‌کنی."
+If image is too dark/blurry, ask for clearer screenshot cropped on Referral field.
 """
 
 def get_chat_prompt(lang, user_name, status, history_text, user_msg, preview_detail, topic, is_colloquial, has_history=False):
@@ -835,6 +848,11 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pending_items[user.id] = {"type": "text", "text": msg}
         await update.message.reply_text("این چیه؟ 👇", reply_markup=get_choice_keyboard()); return
     if msg.startswith("/"): return
+    # ===== جاگذاری شده: سوال صرافی =====
+    if is_exchange_question(msg):
+        lang = get_lang(user.id)
+        await update.message.reply_text(EXCHANGE_INFO.get(lang, EXCHANGE_INFO["fa"]), reply_markup=get_keyboard_or_none(user.id, get_welcome_keyboard(user.id)))
+        return
     if is_hide_buttons_request(msg):
         hide_buttons_for(user.id)
         lang = get_lang(user.id)
@@ -1112,7 +1130,6 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(ChatJoinRequestHandler(handle_join_request))
     app.add_handler(ChatMemberHandler(handle_chat_member, chat_member_types=["member", "left", "kicked", "banned"]))
-    # ===== فیکس JobQueue - اگه نصب نباشه کرش نمی‌کنه =====
     job_queue = app.job_queue
     if job_queue is not None:
         try:

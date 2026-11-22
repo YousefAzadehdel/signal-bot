@@ -29,8 +29,8 @@ ADMIN_IDS = [5386696088]
 REFERRAL_LINK = "https://www.thetruetrade.io/r/37681671"
 REFERRAL_CODE = "37681671"
 
-# لینک دائمی جدید - نامحدود + نیاز به تایید ادمین - دیگه عوضش نکن
-GROUP_LINK = "https://t.me/+0oDwva4dFOswODgy"
+# لینک نهایی - مستقیم - نامحدود - بدون تایید دوم - دیگه عوضش نکن
+GROUP_LINK = "https://t.me/+grdnh_3DG6AzODAy"
 
 DATA_FILE = "users.json"
 
@@ -267,7 +267,6 @@ def is_valid_signal(text):
 def is_admin(update):
     return update.effective_user and update.effective_user.id in ADMIN_IDS
 
-# ======== FIX #5 : فقط لینک دائمی - ربات دیگه لینک تازه نمیسازه ========
 async def get_fresh_group_link(context):
     return GROUP_LINK
 
@@ -372,13 +371,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if users_db.get(uid, {}).get("status") == "approved_by_admin":
             await query.edit_message_text(
                 "🇮🇷 تو قبلاً توسط ادمین تایید شدی ✅\n"
-                "🇮🇷 حالا روی دکمه زیر بزن و درخواست عضویت بده.\n"
+                "🇮🇷 حالا روی دکمه زیر بزن تا مستقیم وارد گروه بشی.\n"
                 "\n"
                 "🇬🇧 You were already approved by admin ✅\n"
-                "🇬🇧 Now click below and send join request.\n"
+                "🇬🇧 Now click below to join group directly.\n"
                 "\n"
                 "🇷🇺 Вы уже были одобрены админом ✅\n"
-                "🇷🇺 Теперь нажмите ниже и отправьте запрос на вступление."
+                "🇷🇺 Теперь нажмите ниже, чтобы напрямую войти в группу."
             )
             try:
                 fresh_link = await get_fresh_group_link(context)
@@ -392,19 +391,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🇮🇷 ثبت شد ✅\n"
             "🇮🇷 درخواستت رفت برای ادمین.\n"
             "🇮🇷 ادمین توی TrueTrade چک می‌کنه که با لینک رفرال ثبت نام کرده باشی.\n"
-            "🇮🇷 اگه تایید بشی، بهت خبر میدم و بعد می‌تونی درخواست عضویت گروه رو بدی.\n"
+            "🇮🇷 اگه تایید بشی، بهت خبر میدم و بعد می‌تونی مستقیم وارد گروه بشی.\n"
             "🇮🇷 لطفاً صبور باش 🙏\n"
             "\n"
             "🇬🇧 Registered ✅\n"
             "🇬🇧 Your request sent to admin.\n"
             "🇬🇧 Admin will check on TrueTrade if you registered with referral link.\n"
-            "🇬🇧 If approved, I will notify you and then you can send join request.\n"
+            "🇬🇧 If approved, I will notify you and then you can join group directly.\n"
             "🇬🇧 Please be patient 🙏\n"
             "\n"
             "🇷🇺 Зарегистрировано ✅\n"
             "🇷🇺 Ваш запрос отправлен админу.\n"
             "🇷🇺 Админ проверит на TrueTrade, зарегистрировались ли вы по реферальной ссылке.\n"
-            "🇷🇺 Если одобрят, я уведомлю вас, и вы сможете отправить запрос на вступление.\n"
+            "🇷🇺 Если одобрят, я уведомлю вас, и вы сможете напрямую войти в группу.\n"
             "🇷🇺 Пожалуйста, наберитесь терпения 🙏"
         )
         for admin_id in ADMIN_IDS:
@@ -454,13 +453,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await context.bot.send_message(
                         chat_id=int(target_id),
                         text="🇮🇷 تبریک! ادمین ثبت نامت رو تایید کرد ✅\n"
-                             "🇮🇷 حالا روی دکمه زیر بزن و درخواست عضویت بده تا وارد بشی.\n"
+                             "🇮🇷 حالا روی دکمه زیر بزن تا مستقیم وارد گروه بشی.\n"
                              "\n"
                              "🇬🇧 Congrats! Admin approved your registration ✅\n"
-                             "🇬🇧 Now click below and send join request to enter.\n"
+                             "🇬🇧 Now click below to join group directly.\n"
                              "\n"
                              "🇷🇺 Поздравляем! Админ одобрил вашу регистрацию ✅\n"
-                             "🇷🇺 Теперь нажмите ниже и отправьте запрос на вступление.\n"
+                             "🇷🇺 Теперь нажмите ниже, чтобы напрямую войти в группу.\n"
                              "\n"
                              f"👥 {fresh_link}",
                         reply_markup=get_group_keyboard(fresh_link)
@@ -635,4 +634,4 @@ def main():
 
 if __name__ == '__main__':
     threading.Thread(target=run_flask, daemon=True).start()
-    main()
+    main() 

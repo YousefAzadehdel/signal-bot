@@ -29,6 +29,9 @@ ADMIN_IDS = [5386696088]
 REFERRAL_LINK = "https://www.thetruetrade.io/r/37681671"
 REFERRAL_CODE = "37681671"
 
+# لینک گروه VIP - نسخه نیازمند تایید
+GROUP_LINK = "https://t.me/P4Lx5Xnu_fRkMzYy"
+
 DATA_FILE = "users.json"
 
 def load_users():
@@ -264,7 +267,6 @@ def is_valid_signal(text):
 def is_admin(update):
     return update.effective_user and update.effective_user.id in ADMIN_IDS
 
-# ===== دکمه ها - هر زبون جدا =====
 def get_welcome_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🇮🇷 🔗 ثبت نام", url=REFERRAL_LINK)],
@@ -276,12 +278,18 @@ def get_welcome_keyboard():
     ])
 
 def get_admin_keyboard(user_id):
-    # ادمین خودتی، فارسی کافیه که قاطی نشه
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("✅ تایید کن", callback_data=f"approve_{user_id}"),
             InlineKeyboardButton("❌ رد کن", callback_data=f"reject_{user_id}"),
         ]
+    ])
+
+def get_group_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🇮🇷 👥 ورود به گروه VIP", url=GROUP_LINK)],
+        [InlineKeyboardButton("🇬🇧 👥 Join VIP Group", url=GROUP_LINK)],
+        [InlineKeyboardButton("🇷🇺 👥 Войти в VIP-группу", url=GROUP_LINK)],
     ])
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -293,7 +301,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "برای گرفتن لینک رفرال بزن /link"
         )
         return
-
     uid = str(user.id)
     if uid in users_db and users_db[uid].get("registered") and users_db[uid].get("status") != "rejected":
         await update.message.reply_text(
@@ -307,8 +314,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🇷🇺 Теперь ждите одобрения админа."
         )
         return
-
-    # پیام اصلی - هر جمله 3 خط جدا
     msg = (
         f"🇮🇷 سلام {user.first_name} 👋\n"
         f"🇬🇧 Hello {user.first_name} 👋\n"
@@ -362,18 +367,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if users_db.get(uid, {}).get("status") == "approved_by_admin":
             await query.edit_message_text(
                 "🇮🇷 تو قبلاً توسط ادمین تایید شدی ✅\n"
-                "🇮🇷 حالا درخواست عضویت گروه رو بده.\n"
+                "🇮🇷 حالا روی دکمه زیر بزن و درخواست عضویت بده.\n"
                 "\n"
                 "🇬🇧 You were already approved by admin ✅\n"
-                "🇬🇧 Now send join request to group.\n"
+                "🇬🇧 Now click below and send join request.\n"
                 "\n"
                 "🇷🇺 Вы уже были одобрены админом ✅\n"
-                "🇷🇺 Теперь отправьте запрос на вступление в группу."
+                "🇷🇺 Теперь нажмите ниже и отправьте запрос на вступление."
             )
+            try:
+                await context.bot.send_message(chat_id=user.id, text=f"👥 {GROUP_LINK}", reply_markup=get_group_keyboard())
+            except:
+                pass
             return
         users_db[uid] = {"registered": True, "username": user.username or "", "first_name": user.first_name or "", "status": "waiting_admin"}
         save_users(users_db)
-
         await query.edit_message_text(
             "🇮🇷 ثبت شد ✅\n"
             "🇮🇷 درخواستت رفت برای ادمین.\n"
@@ -393,7 +401,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🇷🇺 Если одобрят, я уведомлю вас, и вы сможете отправить запрос на вступление.\n"
             "🇷🇺 Пожалуйста, наберитесь терпения 🙏"
         )
-
         for admin_id in ADMIN_IDS:
             try:
                 await context.bot.send_message(
@@ -420,7 +427,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             users_db[target_id] = {**target_data, "status": "approved_by_admin"}
             save_users(users_db)
             await query.edit_message_text(
-                f"✅ تایید شد:\n{target_data.get('first_name','')} (@{target_data.get('username','')}) - ID: {target_id}"
+                f"✅ تایید شد:\n{target_data.get('first_name','')} (@{target_data.get('username','')}) - ID: {target_id}\n\nلینک گروه براش فرستاده شد."
             )
             if target_id in pending_joins:
                 try:
@@ -440,13 +447,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await context.bot.send_message(
                         chat_id=int(target_id),
                         text="🇮🇷 تبریک! ادمین ثبت نامت رو تایید کرد ✅\n"
-                             "🇮🇷 حالا برو روی لینک گروه بزن و درخواست عضویت بده تا وارد بشی.\n"
+                             "🇮🇷 حالا روی دکمه زیر بزن و درخواست عضویت بده تا وارد بشی.\n"
                              "\n"
                              "🇬🇧 Congrats! Admin approved your registration ✅\n"
-                             "🇬🇧 Now click group link and send join request to enter.\n"
+                             "🇬🇧 Now click below and send join request to enter.\n"
                              "\n"
                              "🇷🇺 Поздравляем! Админ одобрил вашу регистрацию ✅\n"
-                             "🇷🇺 Теперь нажмите на ссылку группы и отправьте запрос на вступление."
+                             "🇷🇺 Теперь нажмите ниже и отправьте запрос на вступление.\n"
+                             "\n"
+                             f"👥 {GROUP_LINK}",
+                        reply_markup=get_group_keyboard()
                     )
                 except:
                     pass
@@ -487,7 +497,6 @@ async def handle_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE
     req = update.chat_join_request
     user_id = str(req.from_user.id)
     user_data = users_db.get(user_id, {})
-
     if user_data.get("status") == "approved_by_admin":
         try:
             await req.approve()
@@ -500,7 +509,6 @@ async def handle_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE
         except Exception as e:
             print("approve error:", e)
         return
-
     pending_joins[user_id] = req.chat.id
     try:
         await context.bot.send_message(
@@ -516,7 +524,6 @@ async def handle_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
     except:
         pass
-
     for admin_id in ADMIN_IDS:
         try:
             await context.bot.send_message(
@@ -547,51 +554,27 @@ async def handle_text(update, context):
         return
     txt = update.message.text.strip()
     if len(txt) < 10 or not re.search(r'\d', txt):
-        await update.message.reply_text(
-            "🇮🇷 این سیگنال نیست ❌\n"
-            "🇬🇧 This is not a signal ❌\n"
-            "🇷🇺 Это не сигнал ❌"
-        )
+        await update.message.reply_text("🇮🇷 این سیگنال نیست ❌\n🇬🇧 This is not a signal ❌\n🇷🇺 Это не сигнал ❌")
         return
-    await update.message.reply_text(
-        "🇮🇷 دارم تحلیل میکنم... ⏳\n"
-        "🇬🇧 Analyzing... ⏳\n"
-        "🇷🇺 Анализирую... ⏳"
-    )
+    await update.message.reply_text("🇮🇷 دارم تحلیل میکنم... ⏳\n🇬🇧 Analyzing... ⏳\n🇷🇺 Анализирую... ⏳")
     try:
         fast = parse_farsi_signal(txt)
         if fast and is_valid_signal(fast):
             final = fast + FOOTER
             await context.bot.send_message(chat_id=GROUP_ID, text=final)
-            await update.message.reply_text(
-                "🇮🇷 فرستادم توی گروه ✅\n"
-                "🇬🇧 Sent to group ✅\n"
-                "🇷🇺 Отправлено в группу ✅"
-            )
+            await update.message.reply_text("🇮🇷 فرستادم توی گروه ✅\n🇬🇧 Sent to group ✅\n🇷🇺 Отправлено в группу ✅")
             return
         raw = generate_with_fallback([PROMPT + "\n\nSignal text:\n" + txt])
         if "NOT_A_SIGNAL" in raw:
-            await update.message.reply_text(
-                "🇮🇷 این سیگنال نیست ❌\n"
-                "🇬🇧 This is not a signal ❌\n"
-                "🇷🇺 Это не сигнал ❌"
-            )
+            await update.message.reply_text("🇮🇷 این سیگنال نیست ❌\n🇬🇧 This is not a signal ❌\n🇷🇺 Это не сигнал ❌")
             return
         clean = normalize_signal(raw)
         if not is_valid_signal(clean):
-            await update.message.reply_text(
-                "🇮🇷 این سیگنال نیست ❌\n"
-                "🇬🇧 This is not a signal ❌\n"
-                "🇷🇺 Это не сигнал ❌"
-            )
+            await update.message.reply_text("🇮🇷 این سیگنال نیست ❌\n🇬🇧 This is not a signal ❌\n🇷🇺 Это не сигнал ❌")
             return
         final = clean + FOOTER
         await context.bot.send_message(chat_id=GROUP_ID, text=final)
-        await update.message.reply_text(
-            "🇮🇷 فرستادم توی گروه ✅\n"
-            "🇬🇧 Sent to group ✅\n"
-            "🇷🇺 Отправлено в группу ✅"
-        )
+        await update.message.reply_text("🇮🇷 فرستادم توی گروه ✅\n🇬🇧 Sent to group ✅\n🇷🇺 Отправлено в группу ✅")
     except Exception as e:
         await update.message.reply_text(f"خطا / Error / Ошибка: {e}")
 
@@ -600,11 +583,7 @@ async def handle_photo(update, context):
         return
     if not is_admin(update):
         return
-    await update.message.reply_text(
-        "🇮🇷 دارم عکس رو میخونم... ⏳\n"
-        "🇬🇧 Reading photo... ⏳\n"
-        "🇷🇺 Читаю фото... ⏳"
-    )
+    await update.message.reply_text("🇮🇷 دارم عکس رو میخونم... ⏳\n🇬🇧 Reading photo... ⏳\n🇷🇺 Читаю фото... ⏳")
     try:
         photos = update.message.photo
         photo_obj = photos[-1]
@@ -617,37 +596,21 @@ async def handle_photo(update, context):
             if fast and is_valid_signal(fast):
                 final = fast + FOOTER
                 await context.bot.send_message(chat_id=GROUP_ID, text=final)
-                await update.message.reply_text(
-                    "🇮🇷 فرستادم توی گروه ✅\n"
-                    "🇬🇧 Sent to group ✅\n"
-                    "🇷🇺 Отправлено в группу ✅"
-                )
+                await update.message.reply_text("🇮🇷 فرستادم توی گروه ✅\n🇬🇧 Sent to group ✅\n🇷🇺 Отправлено в группу ✅")
                 return
             raw = generate_with_fallback([PROMPT + f"\n\nCaption text (use this too):\n{caption}\n\nAlso read text inside image.", img_part])
         else:
             raw = generate_with_fallback([PROMPT_CHART_ONLY, img_part])
         if "NOT_A_SIGNAL" in raw:
-            await update.message.reply_text(
-                "🇮🇷 این عکس سیگنال نیست ❌\n"
-                "🇬🇧 This photo is not a signal ❌\n"
-                "🇷🇺 Это фото не сигнал ❌"
-            )
+            await update.message.reply_text("🇮🇷 این عکس سیگنال نیست ❌\n🇬🇧 This photo is not a signal ❌\n🇷🇺 Это фото не сигнал ❌")
             return
         clean = normalize_signal(raw)
         if not is_valid_signal(clean):
-            await update.message.reply_text(
-                "🇮🇷 نتونستم از عکس سیگنال دربیارم ❌\n"
-                "🇬🇧 Could not extract signal from photo ❌\n"
-                "🇷🇺 Не удалось извлечь сигнал из фото ❌"
-            )
+            await update.message.reply_text("🇮🇷 نتونستم از عکس سیگنال دربیارم ❌\n🇬🇧 Could not extract signal from photo ❌\n🇷🇺 Не удалось извлечь сигнал из фото ❌")
             return
         final = clean + FOOTER
         await context.bot.send_message(chat_id=GROUP_ID, text=final)
-        await update.message.reply_text(
-            "🇮🇷 فرستادم توی گروه ✅\n"
-            "🇬🇧 Sent to group ✅\n"
-            "🇷🇺 Отправлено в группу ✅"
-        )
+        await update.message.reply_text("🇮🇷 فرستادم توی گروه ✅\n🇬🇧 Sent to group ✅\n🇷🇺 Отправлено в группу ✅")
     except Exception as e:
         await update.message.reply_text(f"خطا / Error / Ошибка: {e}")
 
@@ -665,4 +628,4 @@ def main():
 
 if __name__ == '__main__':
     threading.Thread(target=run_flask, daemon=True).start()
-    main() 
+    main()

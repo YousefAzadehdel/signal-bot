@@ -29,8 +29,8 @@ ADMIN_IDS = [5386696088]
 REFERRAL_LINK = "https://www.thetruetrade.io/r/37681671"
 REFERRAL_CODE = "37681671"
 
-# لینک نهایی - مستقیم - نامحدود - بدون تایید دوم - دیگه عوضش نکن
-GROUP_LINK = "https://t.me/+grdnh_3DG6AzODAy"
+# لینک نهایی مستقیم - عکس دوم - دیگه عوضش نکن
+GROUP_LINK = "https://t.me/+oUUtnySqTnY1M2M6"
 
 DATA_FILE = "users.json"
 
@@ -307,15 +307,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     uid = str(user.id)
     if uid in users_db and users_db[uid].get("registered") and users_db[uid].get("status") != "rejected":
+        if users_db[uid].get("status") == "approved_by_admin":
+            await update.message.reply_text(f"👥 {GROUP_LINK}", reply_markup=get_group_keyboard(GROUP_LINK))
+            return
         await update.message.reply_text(
             "🇮🇷 تو قبلاً ثبت نامت رو اعلام کردی ✅\n"
-            "🇮🇷 حالا منتظر تایید ادمین باش.\n"
+            "🇮🇷 اگه ادمین هنوز تاییدت نکرده، صبر کن یا بزن /reset و از اول شروع کن.\n"
             "\n"
             "🇬🇧 You already announced your registration ✅\n"
-            "🇬🇧 Now wait for admin approval.\n"
+            "🇬🇧 If admin hasn't approved yet, wait or press /reset to start again.\n"
             "\n"
             "🇷🇺 Вы уже сообщили о регистрации ✅\n"
-            "🇷🇺 Теперь ждите одобрения админа."
+            "🇷🇺 Если админ еще не одобрил, подождите или нажмите /reset чтобы начать заново."
         )
         return
     msg = (
@@ -357,6 +360,17 @@ async def link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🇬🇧 Your Referral Link:\n"
         "🇷🇺 Ваша реферальная ссылка:\n"
         f"{REFERRAL_LINK}"
+    )
+
+async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = str(update.effective_user.id)
+    if uid in users_db:
+        del users_db[uid]
+        save_users(users_db)
+    await update.message.reply_text(
+        "🇮🇷 پاک شد ✅ حالا دوباره بزن /start\n"
+        "🇬🇧 Reset done ✅ Now press /start\n"
+        "🇷🇺 Сброшено ✅ Теперь нажмите /start"
     )
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -625,6 +639,7 @@ def main():
     telegram_app = Application.builder().token(BOT_TOKEN).request(request).build()
     telegram_app.add_handler(CommandHandler("start", start))
     telegram_app.add_handler(CommandHandler("link", link_command))
+    telegram_app.add_handler(CommandHandler("reset", reset_command))
     telegram_app.add_handler(CallbackQueryHandler(button_handler))
     telegram_app.add_handler(ChatJoinRequestHandler(handle_join_request))
     telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
@@ -634,4 +649,4 @@ def main():
 
 if __name__ == '__main__':
     threading.Thread(target=run_flask, daemon=True).start()
-    main() 
+    main()

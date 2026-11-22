@@ -29,8 +29,8 @@ ADMIN_IDS = [5386696088]
 REFERRAL_LINK = "https://www.thetruetrade.io/r/37681671"
 REFERRAL_CODE = "37681671"
 
-# لینک درست گروه - با joinchat
-GROUP_LINK = "https://t.me/joinchat/P4Lx5Xnu_fRkMzYy"
+# لینک اصلی گروه - هیچوقت منقضی نمیشه
+GROUP_LINK = "https://t.me/+zAPgjFbohoAxMjNi"
 
 DATA_FILE = "users.json"
 

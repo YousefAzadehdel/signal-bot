@@ -29,8 +29,8 @@ ADMIN_IDS = [5386696088]
 REFERRAL_LINK = "https://www.thetruetrade.io/r/37681671"
 REFERRAL_CODE = "37681671"
 
-# لینک قدیمی - فقط به عنوان بک‌آپ میمونه
-GROUP_LINK = "https://t.me/joinchat/P4Lx5Xnu_fRkMzYy"
+# لینک دائمی جدید - نامحدود + نیاز به تایید ادمین - دیگه عوضش نکن
+GROUP_LINK = "https://t.me/+0oDwva4dFOswODgy"
 
 DATA_FILE = "users.json"
 
@@ -267,18 +267,9 @@ def is_valid_signal(text):
 def is_admin(update):
     return update.effective_user and update.effective_user.id in ADMIN_IDS
 
-# ======== FIX #5 : لینک تازه ========
+# ======== FIX #5 : فقط لینک دائمی - ربات دیگه لینک تازه نمیسازه ========
 async def get_fresh_group_link(context):
-    try:
-        invite = await context.bot.create_chat_invite_link(
-            chat_id=GROUP_ID,
-            creates_join_request=True,
-            name="VIP Join"
-        )
-        return invite.invite_link
-    except Exception as e:
-        print("fresh link error:", e)
-        return GROUP_LINK
+    return GROUP_LINK
 
 def get_welcome_keyboard():
     return InlineKeyboardMarkup([

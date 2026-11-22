@@ -4,6 +4,7 @@ import os
 import re
 import json
 import datetime
+from io import BytesIO
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -11,6 +12,7 @@ from google import genai
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters, ChatJoinRequestHandler, ChatMemberHandler
 from telegram.request import HTTPXRequest
+from gtts import gTTS
 
 flask_app = Flask(__name__)
 @flask_app.route('/')
@@ -83,6 +85,38 @@ def generate_with_fallback(contents):
             last_error = e; print(f"Model {model} failed: {e}"); continue
     raise last_error if last_error else Exception("All Gemini models failed")
 
+# ===== فقط برای کاربر: ساخت عکس =====
+async def generate_image_bytes(prompt_text):
+    try:
+        resp = client.models.generate_content(model="gemini-2.5-flash-image", contents=[f"Generate an image: {prompt_text}, high quality, detailed"])
+        for part in resp.candidates[0].content.parts:
+            if getattr(part, "inline_data", None):
+                return part.inline_data.data
+    except Exception as e:
+        print("image gen error:", e)
+    return None
+def is_image_request(msg):
+    m = msg.lower()
+    kws = ["عکس بساز", "عکس بکش", "تصویر بساز", "عکس درست کن", "یه عکس", "make an image", "generate image", "draw", "сделай картинку", "нарисуй"]
+    return any(k in m for k in kws)
+
+# ===== فقط برای کاربر: فرستادن ویس =====
+async def send_voice_reply(context, chat_id, text, lang="fa"):
+    tts_lang = {"fa": "fa", "en": "en", "ru": "ru"}.get(lang, "fa")
+    try:
+        buf = BytesIO()
+        gTTS(text=text, lang=tts_lang, slow=False).write_to_fp(buf)
+        buf.seek(0)
+        await context.bot.send_voice(chat_id=chat_id, voice=buf)
+        return True
+    except Exception as e:
+        print("tts error:", e)
+        return False
+def is_voice_request(msg):
+    m = msg.lower()
+    kws = ["ویس بفرست", "ویس بگو", "با صدا بگو", "صدات رو بفرست", "صوتی بگو", "send voice", "voice message", "отправь голосовое", "скажи голосом"]
+    return any(k in m for k in kws)
+
 def is_banned(uid): return str(uid) in banned_users
 def ban_user(uid):
     banned_users.add(str(uid)); save_banned()
@@ -106,20 +140,7 @@ def clean_all_replies(reply, is_first_message=False):
     if not reply: return reply
     if is_first_message: return reply
     cleaned = reply.strip()
-    patterns = [
-        r'^سلام!?\s*من رهاورد[^\n]*\n?',
-        r'^سلام!?\s*من راه[^\n]*\n?',
-        r'^سلام!?\s*اسمم رهاورده[^\n]*\n?',
-        r'^سلام!?\s*اول از همه[^\n]*\n?',
-        r'^سلام رفیق[^\n]*\n?',
-        r'^سلام!?\s*',
-        r'^Hello!?\s*My name is Rahavard[^\n]*\n?',
-        r'^Hi!?\s*My name is Rahavard[^\n]*\n?',
-        r'^Hello!?\s*',
-        r'^Hi!?\s*',
-        r'^Привет!?\s*Меня зовут[^\n]*\n?',
-        r'^Привет!?\s*',
-    ]
+    patterns = [r'^سلام!?\s*من رهاورد[^\n]*\n?', r'^سلام!?\s*من راه[^\n]*\n?', r'^سلام!?\s*اسمم رهاورده[^\n]*\n?', r'^سلام!?\s*اول از همه[^\n]*\n?', r'^سلام رفیق[^\n]*\n?', r'^سلام!?\s*', r'^Hello!?\s*My name is Rahavard[^\n]*\n?', r'^Hi!?\s*My name is Rahavard[^\n]*\n?', r'^Hello!?\s*', r'^Hi!?\s*', r'^Привет!?\s*Меня зовут[^\n]*\n?', r'^Привет!?\s*']
     for p in patterns:
         cleaned = re.sub(p, '', cleaned, flags=re.I).strip()
     cleaned = re.sub(r'من رهاورد هستم\.?\s*', '', cleaned).strip()
@@ -145,7 +166,6 @@ def show_buttons_for(uid):
 def should_show_keyboard(uid): return not users_db.get(str(uid), {}).get("hide_buttons", False)
 def get_keyboard_or_none(uid, keyboard): return keyboard if should_show_keyboard(uid) else None
 
-# ===== جاگذاری شده: توضیح صرافی =====
 EXCHANGE_INFO = {
     "fa": "صرافی The True Trade یه صرافی غیرمتمرکز (DEX) برای معاملات فیوچرز دائمی کریپتوئه، روی شبکه BNB Chain.\n\nخوبی‌هاش:\n✅ بدون احراز هویت (KYC) - فقط با کیف پول یا ایمیل وصل میشی\n✅ پولت دست خودته، صرافی پولت رو نگه نمی‌داره\n✅ بیش از ۵۰ ارز، تا اهرم 1001x\n✅ کارمزد ثابت و پایین، بدون کارمزد فاندینگ (Funding) - یعنی اگه معامله رو باز نگه داری هر ۸ ساعت ازت پول کم نمیشه\n✅ حالت دمو داره، می‌تونی اول با پول مجازی تمرین کنی\n\nو اگه با کد 37681671 ثبت نام کنی، هم وارد گروه VIP ما میشی، هم توی همه معاملاتت کارمزد کمتری میدی.",
     "en": "The True Trade is a decentralized exchange (DEX) for crypto perpetual futures, on BNB Chain.\n\nWhy it's good:\n✅ No KYC - just connect with wallet or email\n✅ Non-custodial - your money stays with you\n✅ 50+ coins, up to 1001x leverage\n✅ Flat low fee, no funding fees - your open trade doesn't get charged every 8 hours\n✅ Demo mode to practice with virtual money\n\nAnd if you register with code 37681671, you join our VIP group AND pay less fee on all your trades.",
@@ -158,27 +178,19 @@ def is_exchange_question(msg):
 
 def detect_topic(msg):
     m = msg.lower()
-    if any(k in m for k in ["ترید نمیخوام", "از ترید نمیخوام", "ترید رو بذار کنار", "نمیخوام از ترید بگم", "من از ترید نمیخوام", "نمیخوام ترید", "не хочу про трейдинг", "don't want trading"]):
-        return "no_trade"
-    if any(k in m for k in ["انگلیسی یادم بده", "انگلیسی یاد بده", "انگلیسی بهم یاد بده", "teach me english", "learn english", "can you teach me english", "учить английский", "научи меня английскому"]):
-        return "english_general"
-    if any(k in m for k in ["بیا حرف بزنیم", "گپ بزنیم", "حرف بزنیم", "حوصلم سر رفته", "давай поговорим", "поболтаем", "мне скучно", "lets talk", "just talk"]):
-        return "casual"
-    if any(k in m for k in ["چجوری پول دربیارم", "چطوری پول دربیارم", "درآمد دومی میخوام", "کارتون چیه", "کارت چیه", "این گروه چیه", "گروهتون چیه", "چجوری عضو شم", "توضیح بده", "چجوری؟", "چطوری؟", "سیگنال چیه", "how to earn", "how to join", "what is this group", "что это за группа", "как заработать", "как вступить"]):
-        return "ask_group"
-    if any(k in m for k in ["ثبت نام", "register", "регистрация"]):
-        return "register"
-    if any(k in m for k in ["سیگنال", "ترید", "بازار", "لوریج", "signal", "trade"]):
-        return "trade"
+    if any(k in m for k in ["ترید نمیخوام", "از ترید نمیخوام", "ترید رو بذار کنار", "نمیخوام از ترید بگم", "من از ترید نمیخوام", "نمیخوام ترید", "не хочу про трейдинг", "don't want trading"]): return "no_trade"
+    if any(k in m for k in ["انگلیسی یادم بده", "انگلیسی یاد بده", "انگلیسی بهم یاد بده", "teach me english", "learn english", "can you teach me english", "учить английский", "научи меня английскому"]): return "english_general"
+    if any(k in m for k in ["بیا حرف بزنیم", "گپ بزنیم", "حرف بزنیم", "حوصلم سر رفته", "давай поговорим", "поболтаем", "мне скучно", "lets talk", "just talk"]): return "casual"
+    if any(k in m for k in ["چجوری پول دربیارم", "چطوری پول دربیارم", "درآمد دومی میخوام", "کارتون چیه", "کارت چیه", "این گروه چیه", "گروهتون چیه", "چجوری عضو شم", "توضیح بده", "چجوری؟", "چطوری؟", "سیگنال چیه", "how to earn", "how to join", "what is this group", "что это за группа", "как заработать", "как вступить"]): return "ask_group"
+    if any(k in m for k in ["ثبت نام", "register", "регистрация"]): return "register"
+    if any(k in m for k in ["سیگنال", "ترید", "بازار", "لوریج", "signal", "trade"]): return "trade"
     return None
 
 def is_register_help_request(msg):
     m = msg.lower()
-    if any(k in m for k in ["روسی بلد نیستم", "انگلیسی بلد نیستم", "فارسی بلد نیستم", "روسی نمی‌دونم", "انگلیسی نمی‌دونم", "روسی نمی‌فهمم", "не знаю русский", "don't know russian", "i don't know russian"]):
-        return False
+    if any(k in m for k in ["روسی بلد نیستم", "انگلیسی بلد نیستم", "فارسی بلد نیستم", "روسی نمی‌دونم", "انگلیسی نمی‌دونم", "روسی نمی‌فهمم", "не знаю русский", "don't know russian", "i don't know russian"]): return False
     if "بلد نیستم" in m:
-        if any(k in m for k in ["ثبت نام", "ثبت‌نام", "ساخت اکانت", "اکانت", "truetrade", "true trade"]):
-            return True
+        if any(k in m for k in ["ثبت نام", "ثبت‌نام", "ساخت اکانت", "اکانت", "truetrade", "true trade"]): return True
         return False
     kws = ["راهنماییم", "راهنمایی ثبت", "کمک ثبت نام", "ثبت نام نمیتونم", "گیر کردم تو ثبت نام", "ثبت نامم نمیشه", "بلد نیستم ثبت نام", "چجوری ثبت نام", "چطوری ثبت نام", "اینجا گیر کرد", "help register", "can't register", "помоги с регистрацией", "не могу зарегистрироваться"]
     return any(k in m for k in kws)
@@ -220,63 +232,9 @@ def get_preview_text(lang, detailed=False):
     return base
 
 TEXTS = {
-    "fa": {
-        "welcome": "سلام {name} 👋\n\nبه ربات سیگنال VIP خوش اومدی!\n\nبرای ورود به گروه VIP باید اول از لینک زیر توی TrueTrade ثبت نام کنی:\n\n🔗 {link}\n\nمراحل:\n1️⃣ روی دکمه ثبت نام بزن و حسابت رو بساز\n2️⃣ برگرد اینجا و بزن ثبت نام کردم\n3️⃣ ادمین چک می‌کنه و اگه واقعاً ثبت نام کرده باشی تاییدت می‌کنه ✅",
-        "choose_lang": "👋 Hello / Привет / سلام\n\nزبان رو انتخاب کن / Choose your language / Выбери язык 👇",
-        "lang_ok": "✅ عالیه! از این به بعد به فارسی باهات حرف می‌زنم.",
-        "btn_register": "📝 ثبت نام در TrueTrade", "btn_done": "✅ ثبت نام کردم", "btn_restart": "🔄 شروع دوباره", "btn_preview": "👀 نمایی از گروه",
-        "already_registered": "تو قبلاً ثبت نامت رو اعلام کردی ✅\nاگه ادمین هنوز تاییدت نکرده، صبر کن یا بزن /restart و از اول شروع کن.",
-        "wait_admin": "⏳ درخواستت فرستاده شد. منتظر تایید ادمین باش.",
-        "registered_ok": "✅ ثبت شد\nدرخواستت رفت برای ادمین.\nادمین توی TrueTrade چک می‌کنه که با لینک رفرال ثبت نام کرده باشی.\nاگه تایید بشی، بهت خبر میدم و بعد می‌تونی مستقیم وارد گروه بشی.\nلطفاً صبور باش 🙏",
-        "approved_msg": "🎉 تبریک! ادمین ثبت نامت رو تایید کرد ✅\nحالا روی دکمه زیر بزن تا مستقیم وارد گروه بشی.\n\n👥 {link}",
-        "rejected_msg": "❌ متاسفانه درخواستت رد شد\nادمین توی TrueTrade چک کرد و ثبت نامت با لینک رفرال پیدا نشد.\nلطفاً با لینک درست ثبت نام کن و دوباره تلاش کن:\n{link}",
-        "join_received": "✅ درخواست عضویتت رسید\nمنتظر تایید ادمین باش.",
-        "need_register": "برای ورود به گروه VIP اول باید ثبت نام کنی 👇\n{link}\n\nبعد از ثبت نام بزن /start",
-        "not_signal": "❌ این سیگنال نیست", "sent_group": "✅ فرستادم توی گروه", "analyzing": "⏳ دارم تحلیل میکنم...",
-        "photo_not_signal": "❌ این عکس سیگنال نیست", "cant_extract": "❌ نتونستم از عکس سیگنال دربیارم",
-        "btn_group": "👥 ورود به گروه VIP", "reset_done": "✅ پاک شد. حالا دوباره بزن /start", "restart_done": "✅ ریست شد. حالا زبانت رو دوباره انتخاب کن 👇",
-        "removed_msg": "از گروه حذف شدی. اگه می‌خوای برگردی، دوباره از اول شروع کن 👇",
-        "banned_msg": "⛔️ متاسفانه تو توسط ادمین بن شدی و دیگه نمی‌تونی از ربات استفاده کنی.",
-        "referral": "لینک رفرال تو:\n{link}", "listening": "🎤 دارم گوش میدم... ⏳", "typing": "✍️ دارم فکر می‌کنم...",
-    },
-    "en": {
-        "welcome": "Hello {name} 👋\n\nWelcome to VIP Signal Bot!\n\nTo enter VIP group, first register on TrueTrade with link below:\n\n🔗 {link}\n\nSteps:\n1️⃣ Click Register and create account\n2️⃣ Come back and press I Registered\n3️⃣ Admin will check and approve if you really registered ✅",
-        "choose_lang": "👋 Hello / Привет / سلام\n\nChoose your language / زبان رو انتخاب کن / Выбери язык 👇",
-        "lang_ok": "✅ Great! From now on I will speak English with you.",
-        "btn_register": "📝 Register on TrueTrade", "btn_done": "✅ I Registered", "btn_restart": "🔄 Restart", "btn_preview": "👀 Group Preview",
-        "already_registered": "You already announced your registration ✅\nIf admin hasn't approved yet, wait or press /restart to start again.",
-        "wait_admin": "⏳ Your request has been sent. Please wait for admin approval.",
-        "registered_ok": "✅ Registered\nYour request sent to admin.\nAdmin will check on TrueTrade if you registered with referral link.\nIf approved, I will notify you and then you can join group directly.\nPlease be patient 🙏",
-        "approved_msg": "🎉 Congrats! Admin approved your registration ✅\nNow click below to join group directly.\n\n👥 {link}",
-        "rejected_msg": "❌ Unfortunately your request was rejected\nAdmin checked on TrueTrade and your registration with referral link was not found.\nPlease register with correct link and try again:\n{link}",
-        "join_received": "✅ Your join request received\nWait for admin approval.",
-        "need_register": "To enter VIP group, first register 👇\n{link}\n\nAfter registration press /start",
-        "not_signal": "❌ This is not a signal", "sent_group": "✅ Sent to group", "analyzing": "⏳ Analyzing...",
-        "photo_not_signal": "❌ This photo is not a signal", "cant_extract": "❌ Could not extract signal from photo",
-        "btn_group": "👥 Join VIP Group", "reset_done": "✅ Reset done. Now press /start", "restart_done": "✅ Restarted. Choose your language again 👇",
-        "removed_msg": "You were removed from the group. If you want to come back, start again 👇",
-        "banned_msg": "⛔️ You were banned by admin and you can no longer use this bot.",
-        "referral": "Your Referral Link:\n{link}", "listening": "🎤 Listening... ⏳", "typing": "✍️ Thinking...",
-    },
-    "ru": {
-        "welcome": "Привет, {name} 👋\n\nДобро пожаловать в VIP Signal Bot!\n\nЧтобы войти в VIP-группу, сначала зарегистрируйся на TrueTrade по ссылке ниже:\n\n🔗 {link}\n\nШаги:\n1️⃣ Нажмите Регистрация и создайте аккаунт\n2️⃣ Вернитесь и нажмите Я зарегистрировался\n3️⃣ Админ проверит и одобрит, если вы действительно зарегистрировались ✅",
-        "choose_lang": "👋 Hello / Привет / سلام\n\nВыбери язык / Choose your language / زبان رو انتخاب کن 👇",
-        "lang_ok": "✅ Отлично! Теперь я буду говорить с тобой по-русски.",
-        "btn_register": "📝 Регистрация на TrueTrade", "btn_done": "✅ Я зарегистрировался", "btn_restart": "🔄 Начать заново", "btn_preview": "👀 Обзор группы",
-        "already_registered": "Вы уже сообщили о регистрации ✅\nЕсли админ еще не одобрил, подождите или нажмите /restart чтобы начать заново.",
-        "wait_admin": "⏳ Заявка отправлена. Жди подтверждения админа.",
-        "registered_ok": "✅ Зарегистрировано\nВаш запрос отправлен админу.\nАдмин проверит на TrueTrade, зарегистрировались ли вы по реферальной ссылке.\nЕсли одобрят, я уведомлю вас, и вы сможете напрямую войти в группу.\nПожалуйста, наберитесь терпения 🙏",
-        "approved_msg": "🎉 Поздравляем! Админ одобрил вашу регистрацию ✅\nТеперь нажмите ниже, чтобы напрямую войти в группу.\n\n👥 {link}",
-        "rejected_msg": "❌ К сожалению, ваш запрос был отклонён\nАдмин проверил на TrueTrade, и ваша регистрация по реферальной ссылке не найдена.\nПожалуйста, зарегистрируйтесь по правильной ссылке и попробуйте снова:\n{link}",
-        "join_received": "✅ Ваш запрос на вступление получен\nДождитесь одобрения админа.",
-        "need_register": "Чтобы войти в VIP-группу, сначала зарегистрируйтесь 👇\n{link}\n\nПосле регистрации нажмите /start",
-        "not_signal": "❌ Это не сигнал", "sent_group": "✅ Отправлено в группу", "analyzing": "⏳ Анализирую...",
-        "photo_not_signal": "❌ Это фото не сигнал", "cant_extract": "❌ Не удалось извлечь сигнал из фото",
-        "btn_group": "👥 Войти в VIP-группу", "reset_done": "✅ Сброшено. Теперь нажмите /start", "restart_done": "✅ Перезапущено. Выбери язык снова 👇",
-        "removed_msg": "Тебя удалили из группы. Если хочешь вернуться, начни заново 👇",
-        "banned_msg": "⛔️ Ты был забанен админом и больше не можешь пользоваться ботом.",
-        "referral": "Ваша реферальная ссылка:\n{link}", "listening": "🎤 Слушаю... ⏳", "typing": "✍️ Думаю...",
-    }
+    "fa": {"welcome": "سلام {name} 👋\n\nبه ربات سیگنال VIP خوش اومدی!\n\nبرای ورود به گروه VIP باید اول از لینک زیر توی TrueTrade ثبت نام کنی:\n\n🔗 {link}\n\nمراحل:\n1️⃣ روی دکمه ثبت نام بزن و حسابت رو بساز\n2️⃣ برگرد اینجا و بزن ثبت نام کردم\n3️⃣ ادمین چک می‌کنه و اگه واقعاً ثبت نام کرده باشی تاییدت می‌کنه ✅", "choose_lang": "👋 Hello / Привет / سلام\n\nزبان رو انتخاب کن / Choose your language / Выбери язык 👇", "lang_ok": "✅ عالیه! از این به بعد به فارسی باهات حرف می‌زنم.", "btn_register": "📝 ثبت نام در TrueTrade", "btn_done": "✅ ثبت نام کردم", "btn_restart": "🔄 شروع دوباره", "btn_preview": "👀 نمایی از گروه", "already_registered": "تو قبلاً ثبت نامت رو اعلام کردی ✅\nاگه ادمین هنوز تاییدت نکرده، صبر کن یا بزن /restart و از اول شروع کن.", "wait_admin": "⏳ درخواستت فرستاده شد. منتظر تایید ادمین باش.", "registered_ok": "✅ ثبت شد\nدرخواستت رفت برای ادمین.\nادمین توی TrueTrade چک می‌کنه که با لینک رفرال ثبت نام کرده باشی.\nاگه تایید بشی، بهت خبر میدم و بعد می‌تونی مستقیم وارد گروه بشی.\nلطفاً صبور باش 🙏", "approved_msg": "🎉 تبریک! ادمین ثبت نامت رو تایید کرد ✅\nحالا روی دکمه زیر بزن تا مستقیم وارد گروه بشی.\n\n👥 {link}", "rejected_msg": "❌ متاسفانه درخواستت رد شد\nادمین توی TrueTrade چک کرد و ثبت نامت با لینک رفرال پیدا نشد.\nلطفاً با لینک درست ثبت نام کن و دوباره تلاش کن:\n{link}", "join_received": "✅ درخواست عضویتت رسید\nمنتظر تایید ادمین باش.", "need_register": "برای ورود به گروه VIP اول باید ثبت نام کنی 👇\n{link}\n\nبعد از ثبت نام بزن /start", "not_signal": "❌ این سیگنال نیست", "sent_group": "✅ فرستادم توی گروه", "analyzing": "⏳ دارم تحلیل میکنم...", "photo_not_signal": "❌ این عکس سیگنال نیست", "cant_extract": "❌ نتونستم از عکس سیگنال دربیارم", "btn_group": "👥 ورود به گروه VIP", "reset_done": "✅ پاک شد. حالا دوباره بزن /start", "restart_done": "✅ ریست شد. حالا زبانت رو دوباره انتخاب کن 👇", "removed_msg": "از گروه حذف شدی. اگه می‌خوای برگردی، دوباره از اول شروع کن 👇", "banned_msg": "⛔️ متاسفانه تو توسط ادمین بن شدی و دیگه نمی‌تونی از ربات استفاده کنی.", "referral": "لینک رفرال تو:\n{link}", "listening": "🎤 دارم گوش میدم... ⏳", "typing": "✍️ دارم فکر می‌کنم..."},
+    "en": {"welcome": "Hello {name} 👋\n\nWelcome to VIP Signal Bot!\n\nTo enter VIP group, first register on TrueTrade with link below:\n\n🔗 {link}\n\nSteps:\n1️⃣ Click Register and create account\n2️⃣ Come back and press I Registered\n3️⃣ Admin will check and approve if you really registered ✅", "choose_lang": "👋 Hello / Привет / سلام\n\nChoose your language / زبان رو انتخاب کن / Выбери язык 👇", "lang_ok": "✅ Great! From now on I will speak English with you.", "btn_register": "📝 Register on TrueTrade", "btn_done": "✅ I Registered", "btn_restart": "🔄 Restart", "btn_preview": "👀 Group Preview", "already_registered": "You already announced your registration ✅\nIf admin hasn't approved yet, wait or press /restart to start again.", "wait_admin": "⏳ Your request has been sent. Please wait for admin approval.", "registered_ok": "✅ Registered\nYour request sent to admin.\nAdmin will check on TrueTrade if you registered with referral link.\nIf approved, I will notify you and then you can join group directly.\nPlease be patient 🙏", "approved_msg": "🎉 Congrats! Admin approved your registration ✅\nNow click below to join group directly.\n\n👥 {link}", "rejected_msg": "❌ Unfortunately your request was rejected\nAdmin checked on TrueTrade and your registration with referral link was not found.\nPlease register with correct link and try again:\n{link}", "join_received": "✅ Your join request received\nWait for admin approval.", "need_register": "To enter VIP group, first register 👇\n{link}\n\nAfter registration press /start", "not_signal": "❌ This is not a signal", "sent_group": "✅ Sent to group", "analyzing": "⏳ Analyzing...", "photo_not_signal": "❌ This photo is not a signal", "cant_extract": "❌ Could not extract signal from photo", "btn_group": "👥 Join VIP Group", "reset_done": "✅ Reset done. Now press /start", "restart_done": "✅ Restarted. Choose your language again 👇", "removed_msg": "You were removed from the group. If you want to come back, start again 👇", "banned_msg": "⛔️ You were banned by admin and you can no longer use this bot.", "referral": "Your Referral Link:\n{link}", "listening": "🎤 Listening... ⏳", "typing": "✍️ Thinking..."},
+    "ru": {"welcome": "Привет, {name} 👋\n\nДобро пожаловать в VIP Signal Bot!\n\nЧтобы войти в VIP-группу, сначала зарегистрируйся на TrueTrade по ссылке ниже:\n\n🔗 {link}\n\nШаги:\n1️⃣ Нажмите Регистрация и создайте аккаунт\n2️⃣ Вернитесь и нажмите Я зарегистрировался\n3️⃣ Админ проверит и одобрит, если вы действительно зарегистрировались ✅", "choose_lang": "👋 Hello / Привет / سلام\n\nВыбери язык / Choose your language / زبان رو انتخاب کن 👇", "lang_ok": "✅ Отлично! Теперь я буду говорить с тобой по-русски.", "btn_register": "📝 Регистрация на TrueTrade", "btn_done": "✅ Я зарегистрировался", "btn_restart": "🔄 Начать заново", "btn_preview": "👀 Обзор группы", "already_registered": "Вы уже сообщили о регистрации ✅\nЕсли админ еще не одобрил, подождите или нажмите /restart чтобы начать заново.", "wait_admin": "⏳ Заявка отправлена. Жди подтверждения админа.", "registered_ok": "✅ Зарегистрировано\nВаш запрос отправлен админу.\nАдмин проверит на TrueTrade, зарегистрировались ли вы по реферальной ссылке.\nЕсли одобрят, я уведомлю вас, и вы сможете напрямую войти в группу.\nПожалуйста, наберитесь терпения 🙏", "approved_msg": "🎉 Поздравляем! Админ одобрил вашу регистрацию ✅\nТеперь нажмите ниже, чтобы напрямую войти в группу.\n\n👥 {link}", "rejected_msg": "❌ К сожалению, ваш запрос был отклонён\nАдмин проверил на TrueTrade, и ваша регистрация по реферальной ссылке не найдена.\nПожалуйста, зарегистрируйтесь по правильной ссылке и попробуйте снова:\n{link}", "join_received": "✅ Ваш запрос на вступление получен\nДождитесь одобрения админа.", "need_register": "Чтобы войти в VIP-группу, сначала зарегистрируйтесь 👇\n{link}\n\nПосле регистрации нажмите /start", "not_signal": "❌ Это не сигнал", "sent_group": "✅ Отправлено в группу", "analyzing": "⏳ Анализирую...", "photo_not_signal": "❌ Это фото не сигнал", "cant_extract": "❌ Не удалось извлечь сигнал из фото", "btn_group": "👥 Войти в VIP-группу", "reset_done": "✅ Сброшено. Теперь нажмите /start", "restart_done": "✅ Перезапущено. Выбери язык снова 👇", "removed_msg": "Тебя удалили из группы. Если хочешь вернуться, начни заново 👇", "banned_msg": "⛔️ Ты был забанен админом и больше не можешь пользоваться ботом.", "referral": "Ваша реферальная ссылка:\n{link}", "listening": "🎤 Слушаю... ⏳", "typing": "✍️ Думаю..."}
 }
 def t(uid, key, **kwargs):
     lang = get_lang(uid); txt = TEXTS.get(lang, TEXTS["fa"]).get(key, key)
@@ -341,7 +299,6 @@ PROMPT_CLASSIFY = """Look at this image / text. Answer with ONE word only:
 - If it is neither -> UNKNOWN
 Output ONLY one word: SIGNAL or RESULT or UNKNOWN"""
 
-# ===== جاگذاری شده: فیکس کد معرف =====
 PROMPT_REGISTER_SCREEN = """
 You are helping user register on TrueTrade. Look at this screenshot CAREFULLY.
 Rules - HARD, NEVER BREAK:
@@ -367,54 +324,17 @@ If image is too dark/blurry, ask for clearer screenshot cropped on Referral fiel
 
 def get_chat_prompt(lang, user_name, status, history_text, user_msg, preview_detail, topic, is_colloquial, has_history=False):
     lang_name = {"fa": "Persian (Farsi)", "en": "English", "ru": "Russian"}.get(lang, "Persian")
-    lang_rule = f"""
-- LANGUAGE LOCK - CRITICAL: User is speaking {lang_name}. You MUST reply ONLY in {lang_name}. NEVER mix languages.
-"""
+    lang_rule = f"\n- LANGUAGE LOCK - CRITICAL: User is speaking {lang_name}. You MUST reply ONLY in {lang_name}. NEVER mix languages.\n"
     if has_history:
-        greeting_rule = """
-- NO REPEATED GREETING - HARD RULE, NEVER BREAK IT:
-    * You ALREADY greeted user at start. NEVER say Salam / Hello / Privet / سلام / Привет again.
-    * NEVER start answer with "Salam!", "Hello!", "Privet!", "سلام!".
-    * NEVER say "My name is Rahavard" again. User already knows you.
-    * NEVER re-introduce yourself. Go DIRECTLY to answer / lesson / translation.
-    * If user says just "Salam / Hello / سلام" again, just say "سلام، بگو" / "جانم" and continue, don't greet back with full intro.
-"""
+        greeting_rule = "\n- NO REPEATED GREETING - HARD RULE, NEVER BREAK IT:\n  * You ALREADY greeted user at start. NEVER say Salam / Hello / Privet / سلام / Привет again.\n  * NEVER start answer with \"Salam!\", \"Hello!\", \"Privet!\", \"سلام!\".\n  * NEVER say \"My name is Rahavard\" again. User already knows you.\n  * NEVER re-introduce yourself. Go DIRECTLY to answer / lesson / translation.\n  * If user says just \"Salam / Hello / سلام\" again, just say \"سلام، بگو\" / \"جانم\" and continue, don't greet back with full intro.\n"
     else:
         greeting_rule = "- This is first message. You can greet once, short."
     if topic in ["onboarding", "casual", "no_trade", "english_general"]:
-        topic_rule = f"""
-- CURRENT TOPIC: {topic} - ONBOARDING / CASUAL MODE
-- ABSOLUTE BAN: Do NOT mention trading, signal, VIP, TrueTrade, referral link, crypto, leverage, TP/SL, joining group, registration - AT ALL.
-- Just get to know user. Ask ONE short question at a time.
-    * Step 1: "How did you find me? Someone introduced you or you found me yourself?"
-    * Step 2: "What do you do these days? Work / study?"
-    * Step 3: "What do you spend time on? Movie / game / music?" -> "Have you ever thought about having a second income?"
-- ONLY if user himself says "how to earn / how to join / what is this group / توضیح بده / چجوری؟" - THEN you can introduce group. Otherwise stay in onboarding.
-- If user says "I don't want trading" -> topic becomes no_trade, NEVER mention trading again.
-- If user says "teach me English" and topic is no_trade or english_general -> teach GENERAL English (movie, music, daily). NEVER turn it into "trading English" unless user explicitly says "trading English".
-- If user says "just chat" -> just chat, NO group reminder.
-- LANGUAGE TEACHING MODE: When user wants to learn English / Russian / Persian:
-    * Say: "باشه مشکلی نیست، منم حرفه‌ای نیستم ولی هر چقدر بلد باشم بهت کمک می‌کنم تا یاد بگیری" - ONLY ONCE at start of teaching, NEVER repeat in every message.
-    * Then teach for real: 3 new words per lesson with meaning + pronunciation + 1 example each.
-    * Then 1 small quiz: ask meaning of ONE of those 3 words.
-    * NEVER invent a "previous quiz". Only refer to quiz if it is in CONVERSATION HISTORY above. If no quiz in history, DO NOT say "جواب کوئیز قبلی...".
-    * NEVER repeat same 3 words. Each lesson must be NEW words.
-    * If user answers quiz correctly, praise short and go to NEXT lesson, don't repeat greeting.
-    * If user asks to translate a sentence, translate it first, THEN continue lesson, DON'T restart lesson from zero.
-"""
+        topic_rule = f"\n- CURRENT TOPIC: {topic} - ONBOARDING / CASUAL MODE\n- ABSOLUTE BAN: Do NOT mention trading, signal, VIP, TrueTrade, referral link, crypto, leverage, TP/SL, joining group, registration - AT ALL.\n- Just get to know user. Ask ONE short question at a time.\n  * Step 1: \"How did you find me? Someone introduced you or you found me yourself?\"\n  * Step 2: \"What do you do these days? Work / study?\"\n  * Step 3: \"What do you spend time on? Movie / game / music?\" -> \"Have you ever thought about having a second income?\"\n- ONLY if user himself says \"how to earn / how to join / what is this group / توضیح بده / چجوری؟\" - THEN you can introduce group. Otherwise stay in onboarding.\n- If user says \"I don't want trading\" -> topic becomes no_trade, NEVER mention trading again.\n- If user says \"teach me English\" and topic is no_trade or english_general -> teach GENERAL English (movie, music, daily). NEVER turn it into \"trading English\" unless user explicitly says \"trading English\".\n- If user says \"just chat\" -> just chat, NO group reminder.\n- LANGUAGE TEACHING MODE: When user wants to learn English / Russian / Persian:\n  * Say: \"باشه مشکلی نیست، منم حرفه‌ای نیستم ولی هر چقدر بلد باشم بهت کمک می‌کنم تا یاد بگیری\" - ONLY ONCE at start of teaching, NEVER repeat in every message.\n  * Then teach for real: 3 new words per lesson with meaning + pronunciation + 1 example each.\n  * Then 1 small quiz: ask meaning of ONE of those 3 words.\n  * NEVER invent a \"previous quiz\". Only refer to quiz if it is in CONVERSATION HISTORY above. If no quiz in history, DO NOT say \"جواب کوئیز قبلی...\".\n  * NEVER repeat same 3 words. Each lesson must be NEW words.\n  * If user answers quiz correctly, praise short and go to NEXT lesson, don't repeat greeting.\n  * If user asks to translate a sentence, translate it first, THEN continue lesson, DON'T restart lesson from zero.\n"
     elif topic == "ask_group":
-        topic_rule = """
-- USER ASKED ABOUT GROUP HIMSELF - NOW you are ALLOWED to introduce group.
-- Say: group of people who beside their main job make daily profit from crypto markets. Ask: "Do you want me to tell you how you can join?"
-- Do NOT send referral link yet. Only if user says "yes / tell me / چجوری عضو شم" then send referral link + steps.
-"""
+        topic_rule = "\n- USER ASKED ABOUT GROUP HIMSELF - NOW you are ALLOWED to introduce group.\n- Say: group of people who beside their main job make daily profit from crypto markets. Ask: \"Do you want me to tell you how you can join?\"\n- Do NOT send referral link yet. Only if user says \"yes / tell me / چجوری عضو شم\" then send referral link + steps.\n"
     elif topic == "register":
-        topic_rule = f"""
-- USER IS IN REGISTRATION FLOW. Now you CAN talk about registration.
-- Referral link: {REFERRAL_LINK}
-- Steps: 1) Register with link 2) Come back and press "I Registered" 3) Admin checks.
-- If user is stuck, ask for screenshot: "Send screenshot, let me see where you are stuck".
-"""
+        topic_rule = f"\n- USER IS IN REGISTRATION FLOW. Now you CAN talk about registration.\n- Referral link: {REFERRAL_LINK}\n- Steps: 1) Register with link 2) Come back and press \"I Registered\" 3) Admin checks.\n- If user is stuck, ask for screenshot: \"Send screenshot, let me see where you are stuck\".\n"
     else:
         topic_rule = "- Topic is trade. You can talk about trading, but keep it short."
     style_rule = "- STYLE: User speaks COLLOQUIAL / slang. Reply in SAME colloquial slang, same vibe. Short sentences, like a Telegram friend." if is_colloquial else "- STYLE: Mirror user exactly. Formal -> formal, casual -> casual."
@@ -452,10 +372,8 @@ def is_colloquial_msg(msg):
 
 def get_chat_reply(user_id, user_name, user_msg):
     detected = detect_lang_from_msg(user_msg)
-    if detected:
-        set_lang(user_id, detected); lang = detected
-    else:
-        lang = get_lang(user_id)
+    if detected: set_lang(user_id, detected); lang = detected
+    else: lang = get_lang(user_id)
     status = users_db.get(str(user_id), {}).get("status", "not_registered")
     hist = chat_history.get(user_id, [])[-6:]
     has_history = len(hist) > 0
@@ -463,10 +381,8 @@ def get_chat_reply(user_id, user_name, user_msg):
     history_text = "\n".join([f"{'User' if h['role']=='user' else 'You'}: {h['text']}" for h in hist]) if hist else "(no history)"
     new_topic = detect_topic(user_msg)
     last_topic = get_topic(user_id)
-    if new_topic == "no_trade":
-        set_topic(user_id, "no_trade"); topic = "no_trade"
-    elif new_topic == "english_general":
-        set_topic(user_id, "english_general"); topic = "english_general"
+    if new_topic == "no_trade": set_topic(user_id, "no_trade"); topic = "no_trade"
+    elif new_topic == "english_general": set_topic(user_id, "english_general"); topic = "english_general"
     elif new_topic:
         if last_topic in ["no_trade", "english_general"] and new_topic == "trade": topic = last_topic
         else: set_topic(user_id, new_topic); topic = new_topic
@@ -603,16 +519,7 @@ def get_group_keyboard(link=None, uid=None):
     return InlineKeyboardMarkup([[InlineKeyboardButton(TEXTS[lang]["btn_group"], url=use_link)], [InlineKeyboardButton(TEXTS[lang]["btn_restart"], callback_data="restart")]])
 def get_choice_keyboard():
     return InlineKeyboardMarkup([[InlineKeyboardButton("📊 سیگنال", callback_data="choice_signal")], [InlineKeyboardButton("🚀 ورود به معامله", callback_data="choice_entry")], [InlineKeyboardButton("😢 استاپ خوردیم", callback_data="choice_sl")], [InlineKeyboardButton("🔥 TP1 خوردیم", callback_data="choice_tp1"), InlineKeyboardButton("🔥🔥 TP2 خوردیم", callback_data="choice_tp2")], [InlineKeyboardButton("🚀🔥 TP3 خوردیم", callback_data="choice_tp3"), InlineKeyboardButton("🎉 TP4 خوردیم", callback_data="choice_tp4")], [InlineKeyboardButton("💎 TP5 خوردیم", callback_data="choice_tp5"), InlineKeyboardButton("👑 TP6 خوردیم", callback_data="choice_tp6")]])
-STATUS_TEXTS = {
-    "choice_entry": "🇮🇷 ورود به معامله 🚀\n🇬🇧 Entered the Trade 🚀\n🇷🇺 Вход в сделку 🚀",
-    "choice_sl": "🇮🇷 استاپ خوردیم 😢\n🇬🇧 Stop Loss Hit 😢\n🇷🇺 Стоп-лосс сработал 😢",
-    "choice_tp1": "🇮🇷 تارگت ۱ خوردیم 🔥💪\n🇬🇧 TP1 Hit 🔥💪\n🇷🇺 TP1 Достигнут 🔥💪",
-    "choice_tp2": "🇮🇷 تارگت ۲ خوردیم 🔥🔥💪\n🇬🇧 TP2 Hit 🔥🔥💪\n🇷🇺 TP2 Достигнут 🔥🔥💪\n\n🇮🇷 حد ضرر رو فری کنید ✅\n🇬🇧 Move your Stop Loss to Breakeven ✅\n🇷🇺 Переведите стоп-лосс в безубыток ✅",
-    "choice_tp3": "🇮🇷 تارگت ۳ خوردیم 🚀🔥💪\n🇬🇧 TP3 Hit 🚀🔥💪\n🇷🇺 TP3 Достигнут 🚀🔥💪\n\n🇮🇷 حد ضرر رو فری کنید ✅\n🇬🇧 Move your Stop Loss to Breakeven ✅\n🇷🇺 Переведите стоп-лосс в безубыток ✅",
-    "choice_tp4": "🇮🇷 تارگت ۴ خوردیم 🎉🚀🔥\n🇬🇧 TP4 Hit 🎉🚀🔥\n🇷🇺 TP4 Достигнут 🎉🚀🔥\n\n🇮🇷 حد ضرر رو فری کنید ✅\n🇬🇧 Move your Stop Loss to Breakeven ✅\n🇷🇺 Переведите стоп-лосс в безубыток ✅",
-    "choice_tp5": "🇮🇷 تارگت ۵ خوردیم 💎🚀🔥\n🇬🇧 TP5 Hit 💎🚀🔥\n🇷🇺 TP5 Достигнут 💎🚀🔥\n\n🇮🇷 حد ضرر رو فری کنید ✅\n🇬🇧 Move your Stop Loss to Breakeven ✅\n🇷🇺 Переведите стоп-лосс в безубыток ✅",
-    "choice_tp6": "🇮🇷 تارگت ۶ خوردیم 👑💎🚀🔥\n🇬🇧 TP6 Hit 👑💎🚀🔥\n🇷🇺 TP6 Достигнут 👑💎🚀🔥\n\n🇮🇷 حد ضرر رو فری کنید ✅\n🇬🇧 Move your Stop Loss to Breakeven ✅\n🇷🇺 Переведите стоп-лосс в безубыток ✅",
-}
+STATUS_TEXTS = {"choice_entry": "🇮🇷 ورود به معامله 🚀\n🇬🇧 Entered the Trade 🚀\n🇷🇺 Вход в сделку 🚀", "choice_sl": "🇮🇷 استاپ خوردیم 😢\n🇬🇧 Stop Loss Hit 😢\n🇷🇺 Стоп-лосс сработал 😢", "choice_tp1": "🇮🇷 تارگت ۱ خوردیم 🔥💪\n🇬🇧 TP1 Hit 🔥💪\n🇷🇺 TP1 Достигнут 🔥💪", "choice_tp2": "🇮🇷 تارگت ۲ خوردیم 🔥🔥💪\n🇬🇧 TP2 Hit 🔥🔥💪\n🇷🇺 TP2 Достигнут 🔥🔥💪\n\n🇮🇷 حد ضرر رو فری کنید ✅\n🇬🇧 Move your Stop Loss to Breakeven ✅\n🇷🇺 Переведите стоп-лосс в безубыток ✅", "choice_tp3": "🇮🇷 تارگت ۳ خوردیم 🚀🔥💪\n🇬🇧 TP3 Hit 🚀🔥💪\n🇷🇺 TP3 Достигнут 🚀🔥💪\n\n🇮🇷 حد ضرر رو فری کنید ✅\n🇬🇧 Move your Stop Loss to Breakeven ✅\n🇷🇺 Переведите стоп-лосс в безубыток ✅", "choice_tp4": "🇮🇷 تارگت ۴ خوردیم 🎉🚀🔥\n🇬🇧 TP4 Hit 🎉🚀🔥\n🇷🇺 TP4 Достигнут 🎉🚀🔥\n\n🇮🇷 حد ضرر رو فری کنید ✅\n🇬🇧 Move your Stop Loss to Breakeven ✅\n🇷🇺 Переведите стоп-лосс в безубыток ✅", "choice_tp5": "🇮🇷 تارگت ۵ خوردیم 💎🚀🔥\n🇬🇧 TP5 Hit 💎🚀🔥\n🇷🇺 TP5 Достигнут 💎🚀🔥\n\n🇮🇷 حد ضرر رو فری کنید ✅\n🇬🇧 Move your Stop Loss to Breakeven ✅\n🇷🇺 Переведите стоп-лосс в безубыток ✅", "choice_tp6": "🇮🇷 تارگت ۶ خوردیم 👑💎🚀🔥\n🇬🇧 TP6 Hit 👑💎🚀🔥\n🇷🇺 TP6 Достигнут 👑💎🚀🔥\n\n🇮🇷 حد ضرر رو فری کنید ✅\n🇬🇧 Move your Stop Loss to Breakeven ✅\n🇷🇺 Переведите стоп-лосс в безубыток ✅"}
 
 async def send_preview_photos(bot, chat_id, lang, keyboard):
     keys = [today_key(), (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)).strftime("%Y-%m-%d")]
@@ -843,15 +750,31 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user; msg = update.message.text.strip()
     if is_banned(user.id) and not is_admin(update):
         await update.message.reply_text(TEXTS["fa"]["banned_msg"]); return
+    # ===== ادمین - فقط سیگنال =====
     if is_admin(update):
         if msg.startswith("/"): return
         pending_items[user.id] = {"type": "text", "text": msg}
         await update.message.reply_text("این چیه؟ 👇", reply_markup=get_choice_keyboard()); return
+    # ===== از اینجا فقط کاربر =====
     if msg.startswith("/"): return
-    # ===== جاگذاری شده: سوال صرافی =====
     if is_exchange_question(msg):
         lang = get_lang(user.id)
         await update.message.reply_text(EXCHANGE_INFO.get(lang, EXCHANGE_INFO["fa"]), reply_markup=get_keyboard_or_none(user.id, get_welcome_keyboard(user.id)))
+        return
+    if is_image_request(msg):
+        await update.message.reply_text("🎨 دارم می‌سازم... ⏳")
+        img_bytes = await generate_image_bytes(msg)
+        if img_bytes:
+            await context.bot.send_photo(chat_id=update.effective_chat.id, photo=BytesIO(img_bytes), caption="بفرما 😊")
+        else:
+            await update.message.reply_text("نتونستم عکس رو بسازم 😅 دوباره با یه جمله واضح‌تر بگو")
+        return
+    if is_voice_request(msg):
+        lang = get_lang(user.id)
+        reply = get_chat_reply(user.id, user.first_name or "", "سلام، یه جمله کوتاه بگو")
+        if reply:
+            ok = await send_voice_reply(context, update.effective_chat.id, reply, lang)
+            if not ok: await update.message.reply_text(reply)
         return
     if is_hide_buttons_request(msg):
         hide_buttons_for(user.id)
@@ -914,10 +837,12 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_banned(user.id) and not is_admin(update):
         await update.message.reply_text(TEXTS["fa"]["banned_msg"]); return
     photo = update.message.photo[-1]
-    caption = update.message.caption or ""
+    caption = (update.message.caption or "").strip()
+    # ===== ادمین - فقط سیگنال =====
     if is_admin(update):
         pending_items[user.id] = {"type": "photo", "photo_id": photo.file_id, "caption": caption}
         await update.message.reply_text("این چیه؟ 👇", reply_markup=get_choice_keyboard()); return
+    # ===== فقط کاربر =====
     topic = get_topic(user.id)
     lang = get_lang(user.id)
     if topic == "register" or is_register_help_request(caption) or any(k in caption for k in ["ثبت نام", "گیر کردم", "راهنماییم"]):
@@ -937,16 +862,34 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         file = await context.bot.get_file(photo.file_id); photo_bytes = await file.download_as_bytearray()
         img_part = genai.types.Part.from_bytes(data=bytes(photo_bytes), mime_type="image/jpeg")
-        hist = chat_history.get(user.id, [])
-        is_first = len(hist) == 0
-        prompt = f"You are Rahavard. User sent a photo. Describe / answer in { {'fa':'Persian','en':'English','ru':'Russian'}.get(lang,'Persian') } ONLY. Short, friendly. NEVER greet again if history exists. NEVER say 'My name is Rahavard' again. Go directly to answer."
+        hist = chat_history.get(user.id, [])[-6:]
+        history_text = "\n".join([f"{'User' if h['role']=='user' else 'You'}: {h['text']}" for h in hist]) if hist else "(no history)"
+        lang_name = {"fa": "Persian", "en": "English", "ru": "Russian"}.get(lang, "Persian")
+        user_q = caption if caption else "این عکس چیه؟ نظرت چیه؟"
+        prompt = f"""You are Rahavard, a friendly Telegram assistant.
+User sent a photo. Look at it CAREFULLY.
+- Language: Reply ONLY in {lang_name}.
+- NEVER greet again. NEVER say "My name is Rahavard" again. Go directly to answer.
+- If caption is a question, answer THAT question about the photo.
+- If no caption, first say what is in the photo in 1 line, then give a logical, useful comment / opinion / tip about it.
+- If it's a chart / signal / screenshot of trading, explain it simply.
+- If it's food / car / animal / selfie / place / meme, react like a human friend, be funny but logical, ask ONE follow-up question.
+- Keep it SHORT: max 4 lines, mobile friendly.
+- If photo is blurry / dark, say so and ask for clearer one, don't guess.
+CONVERSATION HISTORY:
+{history_text}
+USER CAPTION / QUESTION:
+{user_q}
+Reply in {lang_name} ONLY:"""
         raw = generate_with_fallback([prompt, img_part])
-        cleaned = clean_all_replies(raw, is_first_message=is_first)
-        chat_history.setdefault(user.id, []).append({"role": "user", "text": "[عکس فرستاد]"})
+        cleaned = clean_all_replies(raw, is_first_message=False)
+        chat_history.setdefault(user.id, []).append({"role": "user", "text": f"[عکس فرستاد: {user_q}]"})
         chat_history[user.id].append({"role": "bot", "text": cleaned})
+        chat_history[user.id] = chat_history[user.id][-12:]
         await update.message.reply_text(cleaned)
     except Exception as e:
-        await update.message.reply_text(f"عکس رو نتونستم بخونم 😅\n{e}")
+        print("photo general error:", e)
+        await update.message.reply_text("عکس رو دیدم ولی نتونستم خوب بخونمش 😅 یه عکس واضح‌تر بفرست یا بگو توی عکس چی می‌بینی؟")
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -954,26 +897,29 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(TEXTS["fa"]["banned_msg"]); return
     await update.message.reply_text(t(user.id, "listening"))
     try:
-        voice = update.message.voice
+        voice = update.message.voice or update.message.audio
         file = await context.bot.get_file(voice.file_id); voice_bytes = await file.download_as_bytearray()
-        audio_part = genai.types.Part.from_bytes(data=bytes(voice_bytes), mime_type="audio/ogg")
-        transcribed = generate_with_fallback(["Transcribe this voice message to text, exactly what user said. Output ONLY transcription.", audio_part])
+        mime = "audio/ogg" if update.message.voice else "audio/mpeg"
+        audio_part = genai.types.Part.from_bytes(data=bytes(voice_bytes), mime_type=mime)
+        transcribed = generate_with_fallback(["Transcribe this voice message to text, exactly what user said, in the same language. Output ONLY transcription, no extra words.", audio_part])
         transcribed = transcribed.strip()
-        if not transcribed:
-            await update.message.reply_text("صدات رو نشنیدم 😅 دوباره بفرست"); return
+        if not transcribed or len(transcribed) < 2:
+            await update.message.reply_text("صدات رو واضح نشنیدم 😅 یه بار دیگه، آروم‌تر بگو"); return
+        # ===== ادمین - فقط سیگنال =====
         if is_admin(update):
             pending_items[user.id] = {"type": "text", "text": transcribed}
             await update.message.reply_text(f"🎤 شنیدم گفتی:\n{transcribed}\n\nاین چیه؟ 👇", reply_markup=get_choice_keyboard()); return
+        # ===== فقط کاربر - جواب منطقی به ویس =====
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
         reply = get_chat_reply(user.id, user.first_name or "", transcribed)
         if reply:
             reply = clean_all_replies(reply, is_first_message=False)
             await update.message.reply_text(f"🎤 شنیدم گفتی: {transcribed}\n\n{reply}")
         else:
-            await update.message.reply_text("ببخشید، یه لحظه قطع شد 😅 دوباره بگو")
+            await update.message.reply_text("شنیدمت 😊 ولی یه لحظه قطع شد، دوباره بگو")
     except Exception as e:
         print("voice error:", e)
-        await update.message.reply_text("ویس رو نتونستم گوش کنم 😅 متنی بفرست")
+        await update.message.reply_text("ویس رو نتونستم گوش کنم 😅 یه بار دیگه بفرست، یا متنی بنویس")
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query; await query.answer(); user = query.from_user; uid = str(user.id)
@@ -1127,6 +1073,7 @@ def main():
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    app.add_handler(MessageHandler(filters.AUDIO, handle_voice))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(ChatJoinRequestHandler(handle_join_request))
     app.add_handler(ChatMemberHandler(handle_chat_member, chat_member_types=["member", "left", "kicked", "banned"]))

@@ -309,27 +309,30 @@ PROMPT_CLASSIFY = """Look at this image / text. Answer with ONE word only:
 - If it is neither -> UNKNOWN
 Output ONLY one word: SIGNAL or RESULT or UNKNOWN"""
 
+# ===== متن دقیق تو - قفل شده =====
 PROMPT_REGISTER_SCREEN = """
 You are helping user register on TrueTrade. Look at this screenshot CAREFULLY.
 Rules - HARD, NEVER BREAK:
-- PLACEHOLDER IS NOT A VALUE: If the Referral field shows grey text like "کد معرف را وارد کنید (اختیاری)" / "Enter referral code" / "کد معرف" - that means the field is EMPTY. NEVER repeat the placeholder as if user typed it. Say EXACTLY: "کد معرف: خالیه"
-- NEVER guess. If you cannot clearly read the field, say "دیده نمیشه".
-- NEVER say "referral code is correct" unless you LITERALLY see numbers 37681671 typed in the field.
-- If you see a DIFFERENT code, say what code you see.
-- If you see 37681671 clearly, then say it's correct.
+- PLACEHOLDER IS NOT A VALUE: If the Referral field shows grey text like "کد معرف را وارد کنید (اختیاری)" / "Enter referral code" - that means the field is EMPTY.
+- NEVER guess. NEVER say "referral code is correct" unless you LITERALLY see numbers 37681671 typed in the field.
 - NEVER greet. NEVER say "Salam / Hello / Privet / من رهاورد هستم". Go directly to answer.
-- Answer in user's language, short, step by step.
-Check these 3 things:
-1. Email field - filled or empty? Do NOT read placeholder, only typed text.
-2. Password field - filled or empty? Dots = filled.
-3. Referral Code field - EXACTLY: "خالیه" OR "37681671" OR other code you see. If placeholder only -> خالیه.
-Output format - EXACTLY like this:
-- ایمیلت: پر شده / خالیه
-- رمز: پر شده / خالیه
-- کد معرف: خالیه / 37681671 / [کد دیگه‌ای که می‌بینی]
-Then ONE line:
-"کد معرف 37681671 رو توی همین کادر بزن. شرط ورود به گروه VIP همینه، و با همین کد توی همه معاملاتت کارمزد کمتری پرداخت می‌کنی."
-If image is too dark/blurry, ask for clearer screenshot cropped on Referral field.
+- NEVER summarize, NEVER shorten. You MUST output the EXACT template below, word by word.
+IF referral field is EMPTY (like in this screenshot) -> Output EXACTLY this text, nothing else, no extra line:
+این تصویر صفحه ثبت‌نام صرافی TheTrueTrade رو نشون میده که ایمیلت رو وارد کردی ولی فیلد کد معرف خالیه.
+پیشنهاد می‌کنم حتماً همون لینک رفرالی که فرستادم رو بزنی تا توی سیستم ثبت بشی و از مزایا استفاده کنی.
+فرصت ورود به گروه ما فقط از طریق لینک رفرال هستش.
+راستی تمام خدمات ما رایگان هستش
+ثبت‌نامت با موفقیت انجام شد یا توی بخش کد معرف گیر کردی؟
+IF referral field shows 37681671 clearly -> Output EXACTLY this:
+آفرین، کد معرف 37681671 رو درست زدی ✅
+حالا دکمه ایجاد حساب رو بزن و بعدش برگرد اینجا بزن ثبت نام کردم تا تاییدت کنم.
+فرصت ورود به گروه ما فقط از طریق لینک رفرال هستش.
+راستی تمام خدمات ما رایگان هستش
+IF referral field shows a DIFFERENT code -> Say what code you see, then say: این کد اشتباهه، باید 37681671 باشه. برگرد با لینک رفرال من ثبت نام کن.
+Then add these 2 lines:
+فرصت ورود به گروه ما فقط از طریق لینک رفرال هستش.
+راستی تمام خدمات ما رایگان هستش
+IF image is too dark/blurry -> Ask for clearer screenshot cropped on Referral field.
 """
 
 def get_chat_prompt(lang, user_name, status, history_text, user_msg, preview_detail, topic, is_colloquial, has_history=False):

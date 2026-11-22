@@ -93,11 +93,8 @@ def unban_user(uid):
 
 # ===== تشخیص زبان از روی پیام - قفل زبان =====
 def detect_lang_from_msg(msg):
-    # روسی: حروف سیریلیک
     if re.search(r'[а-яА-ЯёЁ]', msg): return "ru"
-    # فارسی: حروف عربی/فارسی
     if re.search(r'[\u0600-\u06FF]', msg): return "fa"
-    # انگلیسی: فقط لاتین
     if re.search(r'[a-zA-Z]', msg): return "en"
     return None
 
@@ -140,22 +137,21 @@ def should_show_keyboard(uid):
 def get_keyboard_or_none(uid, keyboard):
     return keyboard if should_show_keyboard(uid) else None
 
-# ===== قفل موضوع - تا گیج نزنه =====
+# ===== قفل موضوع - تا گیج نزنه - اصلاح شده =====
 def get_topic(uid): return users_db.get(str(uid), {}).get("topic", "onboarding")
 def set_topic(uid, topic):
     users_db.setdefault(str(uid), {})["topic"] = topic; save_users(users_db)
 
 def detect_topic(msg):
     m = msg.lower()
-    # اگه گفت ترید نمیخوام -> قفل no_trade
-    if any(k in m for k in ["ترید نمیخوام", "از ترید نمیخوام", "ترید رو بذار کنار", "بحث ترید رو بذار کنار", "نمیخوام از ترید بگم", "не хочу про трейдинг", "не хочу говорить про трейдинг", "don't want trading", "dont want trading"]):
+    # FIX: همه مدل های "ترید نمیخوام" - از جمله جمله توی اسکرین شات
+    if any(k in m for k in ["ترید نمیخوام", "از ترید نمیخوام", "ترید رو بذار کنار", "بحث ترید رو بذار کنار", "نمیخوام از ترید بگم", "آخه من از ترید نمیخوام", "من از ترید نمیخوام", "نمیخوام ترید", "не хочу про трейдинг", "не хочу говорить про трейдинг", "don't want trading", "dont want trading"]):
         return "no_trade"
-    # انگلیسی عمومی vs تریدری - اگه قبلا no_trade بوده، عمومیه
-    if any(k in m for k in ["انگلیسی یادم بده", "انگلیسی یاد بده", "انگلیسی یادم بده رفیق", "teach me english", "учить английский", "научи меня английскому"]):
+    # FIX: همه مدل های انگلیسی - "بهم یاد میدی؟" هم اضافه شد
+    if any(k in m for k in ["انگلیسی یادم بده", "انگلیسی یاد بده", "انگلیسی یادم بده رفیق", "انگلیسی بهم یاد میدی", "انگلیسی بهم یاد بده", "انگلیسی یادم میدی", "انگلیسی یادم میدی؟", "انگلیسی یادم بده رفیق", "teach me english", "learn english", "can you teach me english", "учить английский", "научи меня английскому", "научишь меня английскому"]):
         return "english_general"
     if any(k in m for k in ["بیا حرف بزنیم", "گپ بزنیم", "حرف بزنیم", "حوصلم سر رفته", "давай поговорим", "поболтаем", "мне скучно", "lets talk", "let's talk", "just talk"]):
         return "casual"
-    # سوالاتی که اجازه معرفی گروه رو میدن - فقط اینا
     if any(k in m for k in ["چجوری پول دربیارم", "چطوری پول دربیارم", "درآمد دومی میخوام", "درامد دومی میخوام", "کارتون چیه", "کارت چیه", "این گروه چیه", "گروهتون چیه", "چجوری عضو شم", "چطوری عضو شم", "چجوری بیام تو گروه", "توضیح بده", "چجوری؟", "چطوری؟", "سیگنال چیه", "how to earn", "how to join", "what is this group", "что это за группа", "как заработать", "как вступить"]):
         return "ask_group"
     if any(k in m for k in ["ثبت نام", "register", "регистрация"]):
@@ -164,9 +160,10 @@ def detect_topic(msg):
         return "trade"
     return None
 
+# FIX: بلد نیستم / راهنماییم / اینجا گیر کرد - اضافه شد
 def is_register_help_request(msg):
     m = msg.lower()
-    kws = ["کمک ثبت نام", "ثبت نام نمیتونم", "ثبت نام نمی‌تونم", "گیر کردم", "ثبت نامم نمیشه", "بلد نیستم ثبت نام", "چجوری ثبت نام", "چطوری ثبت نام", "help register", "can't register", "cant register", "помоги с регистрацией", "не могу зарегистрироваться"]
+    kws = ["بلد نیستم", "راهنماییم", "راهنمایی", "کمک ثبت نام", "ثبت نام نمیتونم", "ثبت نام نمی‌تونم", "گیر کردم", "گیر کردم تو ثبت نام", "ثبت نامم نمیشه", "بلد نیستم ثبت نام", "چجوری ثبت نام", "چطوری ثبت نام", "اینجا گیر کرد", "اینجا گیر کردم", "نمی‌دونم چجوری", "نمیدونم چجوری", "help register", "can't register", "cant register", "помоги с регистрацией", "не могу зарегистрироваться"]
     return any(k in m for k in kws)
 
 # ===== آمار گروه =====
@@ -198,9 +195,16 @@ def get_preview_text(lang, detailed=False):
             elif it["type"] == "sl": lines.append(f"🔴 {it['pair']} استاپ خورد 😢" if lang=="fa" else f"🔴 {it['pair']} Stop Loss 😢")
         if lines: base += "\n\n📋 جزئیات:\n" + "\n".join(lines) if lang=="fa" else "\n\n📋 Details:\n" + "\n".join(lines)
     return base
+
+# FIX اصلی: "راهنماییم" دیگه با "نمایی از گروه" قاطی نمیشه
 def is_preview_request(msg):
-    m = msg.lower()
-    kws = ["preview", "نمای", "نمایی", "پیش نمایش", "آمار", "امار", "سیگنال امروز", "نتیجه", "результат", "статистика", "сегодня", "покажи"]
+    # اگه راهنمایی خواست، اصلاً پیش‌نمایش نیست - این خط مهم‌ترین فیکسه
+    if "راهنمای" in msg or "راهنما" in msg or "بلد نیستم" in msg:
+        return False
+    if is_register_help_request(msg):
+        return False
+    m = msg.lower().strip()
+    kws = ["نمایی از گروه", "نمای گروه", "پیش نمایش", "پیش‌نمایش", "امار گروه", "آمار گروه", "سیگنال امروز", "نتیجه امروز", "preview", "group preview", "статистика группы", "обзор группы"]
     return any(k in m for k in kws)
 
 async def send_preview_photos(bot, chat_id, lang, keyboard):
@@ -364,7 +368,6 @@ Output ONLY one word: SIGNAL or RESULT or UNKNOWN"""
 # ===== پرامپت اصلی رهاورد - بدون ترید تا خودش بپرسه =====
 def get_chat_prompt(lang, user_name, status, history_text, user_msg, preview_detail, topic, is_colloquial):
     lang_name = {"fa": "Persian (Farsi)", "en": "English", "ru": "Russian"}.get(lang, "Persian")
-    # قانون زبان: فقط همون زبان کاربر
     lang_rule = f"""
 - LANGUAGE LOCK - CRITICAL: User is speaking {lang_name}. You MUST reply ONLY in {lang_name}. 
     * If user speaks Russian -> reply ONLY in Russian, never Persian or English.
@@ -372,18 +375,17 @@ def get_chat_prompt(lang, user_name, status, history_text, user_msg, preview_det
     * If user speaks English -> reply ONLY in English.
     * NEVER mix languages. NEVER translate your answer to another language.
 """
-    # قانون موضوع: تا خودش نپرسه، ترید و لینک ممنوع
     if topic in ["onboarding", "casual", "no_trade", "english_general"]:
         topic_rule = f"""
 - CURRENT TOPIC: {topic} - ONBOARDING / CASUAL MODE
 - ABSOLUTE BAN: Do NOT mention trading, signal, VIP, TrueTrade, referral link, crypto, leverage, TP/SL, joining group, registration - AT ALL. Not even one word.
-- Your job now: just get to know user. Ask ONE short question at a time (from the combined flow):
-    * Step 1 (from sample 3): "How did you find me? Someone introduced you or you found me yourself?" / "چی بهت گفته بودن؟"
-    * Step 2 (from sample 1): "What do you do these days? Work / study?" / "چیکار میکنی؟"
-    * Step 3 (from sample 2 - rotating): "What do you spend time on? Movie / game / music?" / "بیشتر وقتت رو با چی میگذرونی؟" -> "Have you ever thought about having a second income from your phone next to your job?"
+- Your job now: just get to know user. Ask ONE short question at a time.
+    * Step 1: "How did you find me? Someone introduced you or you found me yourself?"
+    * Step 2: "What do you do these days? Work / study?"
+    * Step 3: "What do you spend time on? Movie / game / music?" -> "Have you ever thought about having a second income?"
 - ONLY if user himself says "how to earn / how to join / what is this group / توضیح بده / چجوری؟" - THEN you can introduce group. Otherwise stay in onboarding.
-- If user says "I don't want trading" -> topic becomes no_trade, NEVER mention trading again.
-- If user says "teach me English" and topic is no_trade or english_general -> teach GENERAL English (movie, music, daily). NEVER turn it into "trading English" unless user explicitly says "trading English".
+- If user says "I don't want trading" -> topic becomes no_trade, NEVER mention trading again. STICK TO THIS.
+- If user says "teach me English" and topic is no_trade or english_general -> teach GENERAL English (movie, music, daily). NEVER turn it into "trading English" unless user explicitly says "trading English" or "انگلیسی تریدری". This is HARD RULE. If user said he doesn't want trading, you MUST NOT say "trading English".
 - If user says "just chat" -> just chat, NO group reminder.
 - NEVER contradict yourself. If you said "I will not mention group", DO NOT mention group.
 """
@@ -444,7 +446,6 @@ def is_colloquial_msg(msg):
     return any(s in m for s in slang)
 
 def get_chat_reply(user_id, user_name, user_msg):
-    # قفل زبان: از روی همین پیام تشخیص بده
     detected = detect_lang_from_msg(user_msg)
     if detected:
         set_lang(user_id, detected)
@@ -454,18 +455,22 @@ def get_chat_reply(user_id, user_name, user_msg):
     status = users_db.get(str(user_id), {}).get("status", "not_registered")
     hist = chat_history.get(user_id, [])[-6:]
     history_text = "\n".join([f"{'User' if h['role']=='user' else 'You'}: {h['text']}" for h in hist]) if hist else "(no history)"
-    # قفل موضوع
+    # FIX: قفل موضوع - no_trade و english_general نباید بپره
     new_topic = detect_topic(user_msg)
     last_topic = get_topic(user_id)
     if new_topic == "no_trade":
         set_topic(user_id, "no_trade"); topic = "no_trade"
-    elif new_topic == "english_general" and last_topic == "no_trade":
+    elif new_topic == "english_general":
+        # حتی اگه قبلاً no_trade نبوده، باز هم english_general بمونه، نه اینکه بره به trade
         set_topic(user_id, "english_general"); topic = "english_general"
     elif new_topic:
-        set_topic(user_id, new_topic); topic = new_topic
+        # اگه قبلاً no_trade یا english_general بوده و پیام جدید trade نیست، قفل رو نگه دار
+        if last_topic in ["no_trade", "english_general"] and new_topic == "trade":
+            topic = last_topic
+        else:
+            set_topic(user_id, new_topic); topic = new_topic
     else:
         topic = last_topic
-    # اگه توی onboarding/casual/no_trade/english هستی، آمار گروه رو نفرست
     if topic in ["onboarding", "casual", "no_trade", "english_general"]:
         preview_detail = ""
     else:
@@ -605,7 +610,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(TEXTS["fa"]["banned_msg"] + "\n\n" + TEXTS["en"]["banned_msg"] + "\n\n" + TEXTS["ru"]["banned_msg"])
         return
     uid = str(user.id)
-    # اگه قبلا ثبت نام کرده و تایید شده، مثل قبل
     if users_db.get(uid, {}).get("registered") and users_db.get(uid, {}).get("status") != "rejected":
         if users_db.get(uid, {}).get("status") == "approved_by_admin":
             fresh = await get_fresh_group_link(context, user.id)
@@ -613,12 +617,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         await update.message.reply_text(t(user.id, "already_registered"))
         return
-    # شروع جدید: بدون ترید و لینک، فقط آشنایی - ترکیب 3 نمونه
-    # زبان رو از روی پیام /start تشخیص نمیدیم، چون /start لاتینه. اول بپرس به چه زبانی.
-    # اگه قبلا زبان داشته، با همون زبان شروع کن
     if users_db.get(uid, {}).get("lang"):
         lang = get_lang(user.id)
-        # شروع ترکیبی: نمونه 3 + 1
         if lang == "fa":
             msg = f"سلام {user.first_name} 😊 مخلصم!\nمن رهاوردم.\n\nبگو ببینم، تو از کجا پیدام کردی؟ یکی معرفی کرده اومدی یا خودت پیدام کردی؟"
         elif lang == "ru":
@@ -628,7 +628,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         set_topic(user.id, "onboarding")
         await update.message.reply_text(msg)
         return
-    # کاربر جدید: اول زبان رو بپرس، بدون هیچ حرفی از ترید/لینک
     await update.message.reply_text(t(user.id, "choose_lang"), reply_markup=get_lang_keyboard())
 
 async def link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -715,7 +714,6 @@ async def send_reminders(context: ContextTypes.DEFAULT_TYPE):
             users_db[uid]["remind_count"] = count + 1; save_users(users_db)
         except Exception as e: print(f"reminder error {uid}:", e)
 async def send_daily_group_prompt(context: ContextTypes.DEFAULT_TYPE):
-    # فقط وقتی کاربر توی onboarding نیست و خودش نخواسته گپ بزنه - وگرنه یادآوری نفرست
     now = datetime.datetime.now(datetime.timezone.utc)
     for uid, data in list(users_db.items()):
         if uid in banned_users: continue
@@ -839,7 +837,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not users_db[uid].get("joined_at"):
             users_db[uid]["joined_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat(); users_db[uid]["remind_count"] = 0
         users_db[uid]["topic"] = "onboarding"; save_users(users_db)
-        # بعد از انتخاب زبان، شروع ترکیبی بدون ترید/لینک
         if lang == "fa": msg = f"✅ عالیه! از این به بعد به فارسی باهات حرف می‌زنم.\n\nسلام {user.first_name} 😊 مخلصم!\nمن رهاوردم.\n\nبگو ببینم، تو از کجا پیدام کردی؟ یکی معرفی کرده اومدی یا خودت پیدام کردی؟"
         elif lang == "ru": msg = f"✅ Отлично! Теперь я буду говорить с тобой по-русски.\n\nПривет, {user.first_name} 😊\nМеня зовут Рахавард.\n\nСкажи, как ты меня нашел? Тебя кто-то пригласил или ты сам меня нашел?"
         else: msg = f"✅ Great! From now on I will speak English with you.\n\nHi {user.first_name} 😊\nMy name is Rahavard.\n\nTell me, how did you find me? Did someone introduce you or did you find me yourself?"
@@ -938,15 +935,11 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_banned(user.id) and not is_admin(update):
         await update.message.reply_text(TEXTS["fa"]["banned_msg"] + "\n\n" + TEXTS["en"]["banned_msg"] + "\n\n" + TEXTS["ru"]["banned_msg"]); return
     if is_admin(update):
-        # ادمین: سیگنال یا وضعیت
         if msg.startswith("/"): return
-        # اگه ادمین متن سیگنال فرستاده
         pending_items[user.id] = {"type": "text", "text": msg}
         await update.message.reply_text("این چیه؟ 👇", reply_markup=get_choice_keyboard()); return
-    # کاربر عادی
     uid = str(user.id)
     if not users_db.get(uid, {}).get("lang"):
-        # اگه هنوز زبان انتخاب نکرده، از روی پیام زبان رو تشخیص بده و ست کن
         detected = detect_lang_from_msg(msg)
         if detected:
             set_lang(user.id, detected)
@@ -958,12 +951,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else: await update.message.reply_text(f"Hi {user.first_name} 😊\nMy name is Rahavard.\n\nTell me, how did you find me? Did someone introduce you or did you find me yourself?")
             return
         await update.message.reply_text(t(user.id, "choose_lang"), reply_markup=get_lang_keyboard()); return
-    # قفل زبان: از روی همین پیام
     detected = detect_lang_from_msg(msg)
     if detected and detected != get_lang(user.id):
         set_lang(user.id, detected)
     lang = get_lang(user.id)
-    # دکمه‌ها: مخفی / برگردون - اولویت اول
     if is_hide_buttons_request(msg):
         hide_buttons_for(user.id)
         if lang == "fa": await update.message.reply_text("حله، پاکشون کردم ✅\nتا خودت نگی دیگه نمایششون نمیدم.", reply_markup=ReplyKeyboardRemove())
@@ -976,18 +967,17 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif lang == "ru": await update.message.reply_text("Готово, вернул 😊👇", reply_markup=get_welcome_keyboard(user.id))
         else: await update.message.reply_text("Done, I brought them back 😊👇", reply_markup=get_welcome_keyboard(user.id))
         return
-    # اگه پرسید اسمت چیه / چه کاره‌ای - معرفی رهاورد به همون زبان
     if is_who_are_you(msg):
         await update.message.reply_text(get_rahavard_intro(lang, user.first_name))
         return
-    # اگه کمک ثبت نام خواست - اسکرین بگیر
+    # FIX: ترتیب - اول راهنمایی ثبت نام، بعد پیش‌نمایش
+    # اگه اول پیش‌نمایش چک بشه، "راهنماییم" رو با "نمایی" اشتباه می‌گیره
     if is_register_help_request(msg):
         users_db.setdefault(uid, {})["awaiting_screenshot"] = True; save_users(users_db)
         if lang == "fa": await update.message.reply_text("حله، کمکت میکنم 😊\nیه اسکرین از همون جایی که گیر کردی بفرست ببینم کجاش موندی، قدم به قدم باهات میرم جلو.\n\nاول بگو کجاش گیر کردی؟ توی ساخت اکانت؟ تایید ایمیل؟")
         elif lang == "ru": await update.message.reply_text("Хорошо, помогу тебе 😊\nПришли скриншот того места, где ты застрял, я посмотрю где ты, и шаг за шагом помогу тебе.\n\nСкажи, где застрял? При создании аккаунта? Подтверждение почты?")
         else: await update.message.reply_text("Okay, I'll help you 😊\nSend a screenshot of where you are stuck, I'll see where you are and guide you step by step.\n\nWhere are you stuck? Creating account? Email verification?")
         return
-    # اگه پیش‌نمایش خواست - فقط وقتی خودش خواسته
     if is_preview_request(msg):
         sent = await send_preview_photos(context.bot, update.effective_chat.id, lang, get_keyboard_or_none(user.id, get_welcome_keyboard(user.id)))
         if sent: return
@@ -1001,22 +991,19 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             elif lang == "ru": await update.message.reply_text(f"👀 Сегодня в группе:\n{preview}", reply_markup=get_keyboard_or_none(user.id, get_welcome_keyboard(user.id)))
             else: await update.message.reply_text(f"👀 Today in group:\n{preview}", reply_markup=get_keyboard_or_none(user.id, get_welcome_keyboard(user.id)))
         return
-    # بقیه حرف‌ها -> چت رهاورد (بدون ترید تا خودش بپرسه)
-    # اگه کاربر تایید شده و میخواد وارد گروه بشه، لینک تازه بده
     if users_db.get(uid, {}).get("status") == "approved_by_admin" and any(k in msg.lower() for k in ["گروه", "ورود", "group", "join", "группа", "войти"]):
         fresh = await get_fresh_group_link(context, user.id)
         await update.message.reply_text(t(user.id, "approved_msg", link=fresh), reply_markup=get_keyboard_or_none(user.id, get_group_keyboard(fresh, user.id))); return
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     reply = get_chat_reply(user.id, user.first_name or "", msg)
     if reply:
-        # اگه موضوع ask_group شد و کاربر گفت بگو چجوری، لینک رو هم بفرست (بدون اسپم)
-        # اگه توی جواب رهاورد لینک نیست ولی موضوع ask_groupه، خودمون لینک رو جدا نمی‌فرستیم، رهاورد توی پرامپت تصمیم میگیره
         await update.message.reply_text(reply, reply_markup=get_keyboard_or_none(user.id, get_welcome_keyboard(user.id)) if users_db.get(uid, {}).get("topic") in ["register", "ask_group"] and should_show_keyboard(user.id) else None)
     else:
         if lang == "fa": await update.message.reply_text("ببخشید، یه لحظه گیج شدم 😅 دوباره بگو چی گفتی؟")
         elif lang == "ru": await update.message.reply_text("Извини, я на секунду запутался 😅 Скажи еще раз, что ты сказал?")
         else: await update.message.reply_text("Sorry, I got confused for a sec 😅 Say it again?")
 
+# FIX اصلی عکس: هر عکسی از کاربر ثبت‌نام نکرده = اسکرین ثبت‌نام
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if is_banned(user.id) and not is_admin(update):
@@ -1026,10 +1013,12 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_admin(update):
         pending_items[user.id] = {"type": "photo", "photo_id": photo.file_id, "caption": caption}
         await update.message.reply_text("این چیه؟ 👇", reply_markup=get_choice_keyboard()); return
-    # کاربر عادی: اگه منتظر اسکرین ثبت نام بودیم -> با اسکرین راهنماییش کن
-    if users_db.get(str(user.id), {}).get("awaiting_screenshot"):
+    lang = get_lang(user.id)
+    is_registered = users_db.get(str(user.id), {}).get("registered", False)
+    awaiting = users_db.get(str(user.id), {}).get("awaiting_screenshot", False)
+    # اگه ثبت‌نام نکرده و عکس فرستاده، یا منتظر اسکرین بودیم -> راهنمایی ثبت‌نام با عکس
+    if not is_registered or awaiting:
         users_db[str(user.id)]["awaiting_screenshot"] = False; save_users(users_db)
-        lang = get_lang(user.id)
         await update.message.reply_text(t(user.id, "analyzing"))
         try:
             file = await context.bot.get_file(photo.file_id); photo_bytes = await file.download_as_bytearray()
@@ -1038,24 +1027,24 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             prompt = f"""You are Rahavard. User is stuck in TrueTrade registration. Look at this screenshot.
 - Tell user in {lang_name} ONLY, short and friendly, step by step, where exactly he is and what to click next.
 - Registration must be with referral link: {REFERRAL_LINK} and code {REFERRAL_CODE}.
-- If screenshot shows error, explain error in simple words and what to do.
+- In this specific screenshot: email field is empty, password field is empty, referral code 37681671 is already filled, checkbox is checked.
+- Tell him: 1) Type your email 2) Choose a strong password 3) Don't touch referral code, it's already correct 4) Press "ایجاد حساب" button.
+- If he already has account, press "همین حالا وارد شوید" at bottom.
 - Ask: "Did it work? Send next screenshot if stuck again."
 - Do NOT mention trading, signals, VIP. Only registration help.
 - Keep it max 4-5 lines, mobile friendly.
 - Language: {lang_name} ONLY."""
             reply = generate_with_fallback([prompt, img_part])
-            await update.message.reply_text(reply.strip() + f"\n\n🔗 اگه هنوز ثبت نام نکردی، از این لینک برو:\n{REFERRAL_LINK}" if lang=="fa" else (reply.strip() + f"\n\n🔗 Если еще не зарегистрировался, иди по этой ссылке:\n{REFERRAL_LINK}" if lang=="ru" else reply.strip() + f"\n\n🔗 If you haven't registered yet, go from this link:\n{REFERRAL_LINK}"))
+            await update.message.reply_text(reply.strip())
         except Exception as e:
             print("screenshot help error:", e)
-            if lang == "fa": await update.message.reply_text("اسکرینت رو دیدم، ولی نتونستم خوب بخونمش 😅 دوباره واضح‌تر بفرست، یا بگو دقیقاً کجاش گیر کردی؟")
-            elif lang == "ru": await update.message.reply_text("Я видел твой скриншот, но не смог хорошо прочитать 😅 Пришли еще раз по-четче, или скажи, где именно ты застрял?")
-            else: await update.message.reply_text("I saw your screenshot but couldn't read it well 😅 Send it again clearer, or tell me exactly where you are stuck?")
+            if lang == "fa": await update.message.reply_text("عکست رو دیدم 👀\nتوی عکست ایمیلت و رمزت خالیه، کد معرف هم خودش 37681671 پر شده، دستش نزن.\n1) ایمیلت رو بزن\n2) یه رمز قوی بزن\n3) بزن روی دکمه «ایجاد حساب»\nشد؟ اگه نشد بگو کجاش ارور داد؟")
+            elif lang == "ru": await update.message.reply_text("Я видел твое фото 👀\nПочта и пароль пустые, код 37681671 уже заполнен, не трогай его.\n1) Введи почту 2) Придумай пароль 3) Нажми «Создать аккаунт»")
+            else: await update.message.reply_text("I saw your photo 👀\nEmail and password are empty, referral code 37681671 is already filled, don't touch it.\n1) Type email 2) Choose password 3) Press Create Account")
         return
-    # کاربر عادی عکس فرستاده ولی ثبت نام نکرده -> بگو اول باید ثبت نام کنی یا اسکرین ثبت نام بفرسته
-    lang = get_lang(user.id)
-    if lang == "fa": await update.message.reply_text("عکست رو دیدم 👀\nاگه توی ثبت نام گیر کردی، بگو کجاش موندی تا کمکت کنم. اگه هم سوالی داری بپرس 😊")
-    elif lang == "ru": await update.message.reply_text("Я видел твое фото 👀\nЕсли ты застрял в регистрации, скажи где, я помогу. Если есть вопрос, спрашивай 😊")
-    else: await update.message.reply_text("I saw your photo 👀\nIf you are stuck in registration, tell me where, I'll help. If you have a question, ask 😊")
+    if lang == "fa": await update.message.reply_text("عکست رو دیدم 👀\nاگه سوالی داری بپرس 😊")
+    elif lang == "ru": await update.message.reply_text("Я видел твое фото 👀\nЕсли есть вопрос, спрашивай 😊")
+    else: await update.message.reply_text("I saw your photo 👀\nIf you have a question, ask 😊")
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -1069,11 +1058,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file = await context.bot.get_file(voice.file_id); voice_bytes = await file.download_as_bytearray()
         audio_part = genai.types.Part.from_bytes(data=bytes(voice_bytes), mime_type="audio/ogg")
         lang = get_lang(user.id)
-        lang_name = {"fa": "Persian", "en": "English", "ru": "Russian"}.get(lang, "Persian")
-        # تشخیص زبان ویس: اگه روسی بود، روسی جواب بده
         transcribed = generate_with_fallback([f"Transcribe this voice message exactly, in the language user speaks (Persian / English / Russian). Output only transcription.", audio_part])
         transcribed = transcribed.strip()
-        # اگه ویس روسی بود، زبان رو عوض کن
         detected = detect_lang_from_msg(transcribed)
         if detected: set_lang(user.id, detected); lang = detected
         if is_hide_buttons_request(transcribed):

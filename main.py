@@ -91,7 +91,6 @@ def ban_user(uid):
 def unban_user(uid):
     banned_users.discard(str(uid)); save_banned()
 
-# ===== تشخیص زبان از روی پیام - قفل زبان =====
 def detect_lang_from_msg(msg):
     if re.search(r'[а-яА-ЯёЁ]', msg): return "ru"
     if re.search(r'[\u0600-\u06FF]', msg): return "fa"
@@ -105,7 +104,6 @@ def set_lang(uid, lang):
     users_db.setdefault(str(uid), {})["lang"] = lang
     save_users(users_db)
 
-# ===== معرفی رهاورد - به 3 زبان =====
 def get_rahavard_intro(lang, user_name=""):
     if lang == "ru":
         return f"Меня зовут Рахавард 😊\nЯ могу болтать с тобой, отвечать на вопросы, помогать с регистрацией, и если захочешь, помочь тебе присоединиться к нам.\nЯ НЕ могу: предсказывать будущее рынка и добавлять в VIP без админа.\n\nА тебя как зовут?"
@@ -119,7 +117,6 @@ def is_who_are_you(msg):
     kws = ["اسمت چیه", "اسم چیه", "تو کی هستی", "تو کیی", "چه کاره", "چه کاره ای", "شغلت چیه", "چی بلدی", "چی کار میکنی", "معرفی", "who are you", "what is your name", "what's your name", "what can you do", "как тебя зовут", "кто ты", "что ты умеешь", "чем занимаешься", "твое имя"]
     return any(k in m for k in kws)
 
-# ===== دکمه‌ها: مخفی / برگردون =====
 def is_hide_buttons_request(msg):
     m = msg.lower()
     kws = ["دکمه هارو تا نگفتم", "دکمه ها رو تا نگفتم", "دکمه هارو نمایش نده", "دکمه ها رو نمایش نده", "دکمه رو نمایش نده", "دکمه هارو پاک کن", "دکمه ها رو پاک کن", "دکمه رو پاک کن", "دکمه هارو بردار", "hide buttons", "remove buttons", "убери кнопки", "скрой кнопки"]
@@ -137,18 +134,15 @@ def should_show_keyboard(uid):
 def get_keyboard_or_none(uid, keyboard):
     return keyboard if should_show_keyboard(uid) else None
 
-# ===== قفل موضوع - تا گیج نزنه - اصلاح شده =====
 def get_topic(uid): return users_db.get(str(uid), {}).get("topic", "onboarding")
 def set_topic(uid, topic):
     users_db.setdefault(str(uid), {})["topic"] = topic; save_users(users_db)
 
 def detect_topic(msg):
     m = msg.lower()
-    # FIX: همه مدل های "ترید نمیخوام" - از جمله جمله توی اسکرین شات
     if any(k in m for k in ["ترید نمیخوام", "از ترید نمیخوام", "ترید رو بذار کنار", "بحث ترید رو بذار کنار", "نمیخوام از ترید بگم", "آخه من از ترید نمیخوام", "من از ترید نمیخوام", "نمیخوام ترید", "не хочу про трейдинг", "не хочу говорить про трейдинг", "don't want trading", "dont want trading"]):
         return "no_trade"
-    # FIX: همه مدل های انگلیسی - "بهم یاد میدی؟" هم اضافه شد
-    if any(k in m for k in ["انگلیسی یادم بده", "انگلیسی یاد بده", "انگلیسی یادم بده رفیق", "انگلیسی بهم یاد میدی", "انگلیسی بهم یاد بده", "انگلیسی یادم میدی", "انگلیسی یادم میدی؟", "انگلیسی یادم بده رفیق", "teach me english", "learn english", "can you teach me english", "учить английский", "научи меня английскому", "научишь меня английскому"]):
+    if any(k in m for k in ["انگلیسی یادم بده", "انگلیسی یاد بده", "انگلیسی یادم بده رفیق", "انگلیسی بهم یاد میدی", "انگلیسی بهم یاد بده", "انگلیسی یادم میدی", "انگلیسی یادم میدی؟", "teach me english", "learn english", "can you teach me english", "учить английский", "научи меня английскому", "научишь меня английскому"]):
         return "english_general"
     if any(k in m for k in ["بیا حرف بزنیم", "گپ بزنیم", "حرف بزنیم", "حوصلم سر رفته", "давай поговорим", "поболтаем", "мне скучно", "lets talk", "let's talk", "just talk"]):
         return "casual"
@@ -160,13 +154,21 @@ def detect_topic(msg):
         return "trade"
     return None
 
-# FIX: بلد نیستم / راهنماییم / اینجا گیر کرد - اضافه شد
+# ===== FIX جدید: "بلد نیستم" به تنهایی = ثبت‌نام نیست =====
 def is_register_help_request(msg):
     m = msg.lower()
-    kws = ["بلد نیستم", "راهنماییم", "راهنمایی", "کمک ثبت نام", "ثبت نام نمیتونم", "ثبت نام نمی‌تونم", "گیر کردم", "گیر کردم تو ثبت نام", "ثبت نامم نمیشه", "بلد نیستم ثبت نام", "چجوری ثبت نام", "چطوری ثبت نام", "اینجا گیر کرد", "اینجا گیر کردم", "نمی‌دونم چجوری", "نمیدونم چجوری", "help register", "can't register", "cant register", "помоги с регистрацией", "не могу зарегистрироваться"]
+    # اگه داره از زبان حرف میزنه، اصلاً ثبت‌نام نیست
+    # مثل: "روسی بلد نیستم" / "انگلیسی بلد نیستم" -> اینا زبانن، نه ثبت‌نام
+    if any(k in m for k in ["روسی بلد نیستم", "انگلیسی بلد نیستم", "فارسی بلد نیستم", "روسی نمی‌دونم", "انگلیسی نمی‌دونم", "روسی نمی‌فهمم", "انگلیسی نمی‌فهمم", "روسی نمیفهمم", "не знаю русский", "не знаю английский", "don't know russian", "don't know english", "i don't know russian"]):
+        return False
+    # "بلد نیستم" فقط وقتی ثبت‌نام باشه که کنارش ثبت‌نام / اکانت باشه
+    if "بلد نیستم" in m:
+        if any(k in m for k in ["ثبت نام", "ثبت‌نام", "ساخت اکانت", "اکانت", "truetrade", "true trade", "ثبت‌نامم", "ثبت نامم"]):
+            return True
+        return False
+    kws = ["راهنماییم", "راهنمایی ثبت", "کمک ثبت نام", "ثبت نام نمیتونم", "ثبت نام نمی‌تونم", "گیر کردم تو ثبت نام", "ثبت نامم نمیشه", "بلد نیستم ثبت نام", "چجوری ثبت نام", "چطوری ثبت نام", "اینجا گیر کرد", "گیر کردم تو ثبت نام", "help register", "can't register", "cant register", "помоги с регистрацией", "не могу зарегистрироваться"]
     return any(k in m for k in kws)
 
-# ===== آمار گروه =====
 def today_key(): return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
 def get_day_stats(key): return group_stats.get(key, {"signals": 0, "tp": 0, "sl": 0, "details": []})
 def add_stat(field, detail=None):
@@ -196,9 +198,7 @@ def get_preview_text(lang, detailed=False):
         if lines: base += "\n\n📋 جزئیات:\n" + "\n".join(lines) if lang=="fa" else "\n\n📋 Details:\n" + "\n".join(lines)
     return base
 
-# FIX اصلی: "راهنماییم" دیگه با "نمایی از گروه" قاطی نمیشه
 def is_preview_request(msg):
-    # اگه راهنمایی خواست، اصلاً پیش‌نمایش نیست - این خط مهم‌ترین فیکسه
     if "راهنمای" in msg or "راهنما" in msg or "بلد نیستم" in msg:
         return False
     if is_register_help_request(msg):
@@ -224,7 +224,6 @@ async def send_preview_photos(bot, chat_id, lang, keyboard):
         return True
     return False
 
-# ===== عددها =====
 NUM_PATTERN = r'(\d[\d,]*\.?\d*(?:e-?\d+)?)'
 def clean_number(s):
     if not s: return s
@@ -365,7 +364,6 @@ PROMPT_CLASSIFY = """Look at this image / text. Answer with ONE word only:
 - If it is neither -> UNKNOWN
 Output ONLY one word: SIGNAL or RESULT or UNKNOWN"""
 
-# ===== پرامپت اصلی رهاورد - بدون ترید تا خودش بپرسه =====
 def get_chat_prompt(lang, user_name, status, history_text, user_msg, preview_detail, topic, is_colloquial):
     lang_name = {"fa": "Persian (Farsi)", "en": "English", "ru": "Russian"}.get(lang, "Persian")
     lang_rule = f"""
@@ -388,6 +386,7 @@ def get_chat_prompt(lang, user_name, status, history_text, user_msg, preview_det
 - If user says "teach me English" and topic is no_trade or english_general -> teach GENERAL English (movie, music, daily). NEVER turn it into "trading English" unless user explicitly says "trading English" or "انگلیسی تریدری". This is HARD RULE. If user said he doesn't want trading, you MUST NOT say "trading English".
 - If user says "just chat" -> just chat, NO group reminder.
 - NEVER contradict yourself. If you said "I will not mention group", DO NOT mention group.
+- IMPORTANT: If user says "I don't know Russian / روسی بلد نیستم" -> it means switch language to his language, NOT registration help. Apologize and switch language.
 """
     elif topic == "ask_group":
         topic_rule = """
@@ -455,16 +454,13 @@ def get_chat_reply(user_id, user_name, user_msg):
     status = users_db.get(str(user_id), {}).get("status", "not_registered")
     hist = chat_history.get(user_id, [])[-6:]
     history_text = "\n".join([f"{'User' if h['role']=='user' else 'You'}: {h['text']}" for h in hist]) if hist else "(no history)"
-    # FIX: قفل موضوع - no_trade و english_general نباید بپره
     new_topic = detect_topic(user_msg)
     last_topic = get_topic(user_id)
     if new_topic == "no_trade":
         set_topic(user_id, "no_trade"); topic = "no_trade"
     elif new_topic == "english_general":
-        # حتی اگه قبلاً no_trade نبوده، باز هم english_general بمونه، نه اینکه بره به trade
         set_topic(user_id, "english_general"); topic = "english_general"
     elif new_topic:
-        # اگه قبلاً no_trade یا english_general بوده و پیام جدید trade نیست، قفل رو نگه دار
         if last_topic in ["no_trade", "english_general"] and new_topic == "trade":
             topic = last_topic
         else:
@@ -970,8 +966,22 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_who_are_you(msg):
         await update.message.reply_text(get_rahavard_intro(lang, user.first_name))
         return
-    # FIX: ترتیب - اول راهنمایی ثبت نام، بعد پیش‌نمایش
-    # اگه اول پیش‌نمایش چک بشه، "راهنماییم" رو با "نمایی" اشتباه می‌گیره
+    # ===== FIX جدید: "روسی بلد نیستم" = عوض کردن زبان، نه ثبت‌نام =====
+    # این باید قبل از is_register_help_request چک بشه
+    low = msg.lower()
+    if any(k in low for k in ["روسی بلد نیستم", "روسی نمی‌دونم", "روسی نمی‌فهمم", "روسی نمیفهمم", "من روسی بلد نیستم", "آه من روسی بلد نیستم"]):
+        set_lang(user.id, "fa")
+        await update.message.reply_text("آهان ببخشید 😅 حق با توئه، اشتباه کردم روسی حرف زدم.\nاز این به بعد فارسی باهات حرف می‌زنم.\n\nبگو ببینم، تو از کجا پیدام کردی؟ یکی معرفی کرده اومدی یا خودت پیدام کردی؟")
+        return
+    if any(k in low for k in ["انگلیسی بلد نیستم", "انگلیسی نمی‌دونم", "انگلیسی نمی‌فهمم"]):
+        set_lang(user.id, "fa")
+        await update.message.reply_text("باشه، فارسی حرف می‌زنیم 😊\nبگو ببینم، تو از کجا پیدام کردی؟")
+        return
+    if any(k in low for k in ["فارسی بلد نیستم", "فارسی نمی‌دونم"]):
+        # اگه فارسی بلد نیست، به انگلیسی بگو
+        set_lang(user.id, "en")
+        await update.message.reply_text("Okay, let's speak English 😊\nTell me, how did you find me?")
+        return
     if is_register_help_request(msg):
         users_db.setdefault(uid, {})["awaiting_screenshot"] = True; save_users(users_db)
         if lang == "fa": await update.message.reply_text("حله، کمکت میکنم 😊\nیه اسکرین از همون جایی که گیر کردی بفرست ببینم کجاش موندی، قدم به قدم باهات میرم جلو.\n\nاول بگو کجاش گیر کردی؟ توی ساخت اکانت؟ تایید ایمیل؟")
@@ -1003,7 +1013,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif lang == "ru": await update.message.reply_text("Извини, я на секунду запутался 😅 Скажи еще раз, что ты сказал?")
         else: await update.message.reply_text("Sorry, I got confused for a sec 😅 Say it again?")
 
-# FIX اصلی عکس: هر عکسی از کاربر ثبت‌نام نکرده = اسکرین ثبت‌نام
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if is_banned(user.id) and not is_admin(update):
@@ -1016,7 +1025,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = get_lang(user.id)
     is_registered = users_db.get(str(user.id), {}).get("registered", False)
     awaiting = users_db.get(str(user.id), {}).get("awaiting_screenshot", False)
-    # اگه ثبت‌نام نکرده و عکس فرستاده، یا منتظر اسکرین بودیم -> راهنمایی ثبت‌نام با عکس
     if not is_registered or awaiting:
         users_db[str(user.id)]["awaiting_screenshot"] = False; save_users(users_db)
         await update.message.reply_text(t(user.id, "analyzing"))

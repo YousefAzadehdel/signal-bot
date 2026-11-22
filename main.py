@@ -124,6 +124,92 @@ def unban_user(uid):
     banned_users.discard(str(uid))
     save_banned()
 
+# ===== چرخه یادآوری گروه: 30 دقیقه توی چت / 24 ساعت بیرون چت =====
+CASUAL_PHRASES = ["بیا حرف بزنیم", "حرف بزنیم", "گپ بزنیم", "بیا گپ بزنیم", "حوصلم سر رفته", "حوصله ام سر رفته", "دلم گرفته", "بیا صحبت کنیم", "صحبت کنیم", "فقط حرف بزنیم", "lets talk", "let's talk", "let s talk", "just talk", "chat with me", "talk to me", "поговорим", "давай поговорим", "давай поболтаем", "мне скучно", "поболтаем", "пообщаемся"]
+
+def is_casual_request(msg):
+    m = msg.lower().strip()
+    return any(p in m for p in CASUAL_PHRASES)
+
+def is_casual_mode(uid):
+    u = users_db.get(str(uid), {})
+    until = u.get("casual_until")
+    if not until:
+        return False
+    try:
+        return datetime.datetime.now(datetime.timezone.utc) < datetime.datetime.fromisoformat(until)
+    except:
+        return False
+
+def set_casual_mode(uid):
+    now = datetime.datetime.now(datetime.timezone.utc)
+    users_db.setdefault(str(uid), {})["casual_until"] = (now + datetime.timedelta(minutes=30)).isoformat()
+    users_db[str(uid)]["last_group_prompt"] = now.isoformat()
+    save_users(users_db)
+
+def get_casual_reminder(lang):
+    if lang == "fa":
+        return "\n\nراستی این گروه علاوه بر شغل فعلیشون دارن روزانه از بازارهای مالی کریپتو سود کسب میکنن 😎 دوست داری تو هم بیای توی گروه ما؟"
+    elif lang == "ru":
+        return "\n\nКстати, эта группа, помимо своей основной работы, ежедневно зарабатывает на крипто-финансовых рынках 😎 Хочешь тоже прийти в нашу группу?"
+    else:
+        return "\n\nBy the way, this group, besides their current jobs, are making daily profit from crypto financial markets 😎 Would you like to join our group too?"
+
+def can_prompt_in_chat(uid):
+    u = users_db.get(str(uid), {})
+    last = u.get("last_group_prompt")
+    if not last:
+        return True
+    try:
+        dt = datetime.datetime.fromisoformat(last)
+        return (datetime.datetime.now(datetime.timezone.utc) - dt).total_seconds() >= 30 * 60
+    except:
+        return True
+
+def mark_prompted(uid):
+    users_db.setdefault(str(uid), {})["last_group_prompt"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    save_users(users_db)
+
+def get_casual_24h_msg(lang, name=""):
+    if lang == "fa":
+        return f"سلام {name} 👋\n\nراستی دوست داری به جمع ما اضافه بشی؟ 😊\nتوی گروه ما بچه‌ها علاوه بر شغل فعلیشون دارن روزانه از بازارهای مالی کریپتو سود کسب میکنن 📈\nاگه دوست داری بیای، بگو تا راهنماییت کنم 👇"
+    elif lang == "ru":
+        return f"Привет {name} 👋\n\nКстати, хочешь присоединиться к нам? 😊\nВ нашей группе ребята, помимо своей основной работы, ежедневно зарабатывают на крипто-финансовых рынках 📈\nЕсли хочешь прийти, скажи, я тебе помогу 👇"
+    else:
+        return f"Hi {name} 👋\n\nBy the way, would you like to join us? 😊\nIn our group, besides their current jobs, they are making daily profit from crypto financial markets 📈\nIf you want to come, tell me and I'll guide you 👇"
+
+async def send_daily_group_prompt(context: ContextTypes.DEFAULT_TYPE):
+    now = datetime.datetime.now(datetime.timezone.utc)
+    for uid, data in list(users_db.items()):
+        if uid in banned_users:
+            continue
+        if data.get("registered"):
+            continue
+        if not data.get("lang"):
+            continue
+        joined = data.get("joined_at")
+        if joined:
+            try:
+                if (now - datetime.datetime.fromisoformat(joined)).total_seconds() < 24 * 3600:
+                    continue
+            except:
+                pass
+        last = data.get("last_group_prompt")
+        if last:
+            try:
+                if (now - datetime.datetime.fromisoformat(last)).total_seconds() < 24 * 3600:
+                    continue
+            except:
+                pass
+        try:
+            lang = data.get("lang", "fa")
+            msg = get_casual_24h_msg(lang, data.get("first_name", ""))
+            await context.bot.send_message(chat_id=int(uid), text=msg, reply_markup=get_welcome_keyboard(int(uid)))
+            users_db[uid]["last_group_prompt"] = now.isoformat()
+            save_users(users_db)
+        except Exception as e:
+            print(f"daily prompt error {uid}:", e)
+
 # ===== عددها: فیکس 0.000235 و 61,234 =====
 NUM_PATTERN = r'(\d[\d,]*\.?\d*(?:e-?\d+)?)'
 
@@ -422,8 +508,17 @@ PROMPT_CLASSIFY = """Look at this image / text. Answer with ONE word only:
 - If it is neither -> output: UNKNOWN
 Output ONLY one word: SIGNAL or RESULT or UNKNOWN"""
 
-def get_chat_prompt(lang, user_name, status, history_text, user_msg, preview_detail):
+def get_chat_prompt(lang, user_name, status, history_text, user_msg, preview_detail, casual_mode):
     lang_name = {"fa": "Persian (Farsi)", "en": "English", "ru": "Russian"}.get(lang, "Persian")
+    casual_rule = ""
+    if casual_mode:
+        casual_rule = """
+- CASUAL MODE IS ON: User asked to just chat. For the next 30 minutes, DO NOT mention group, VIP, registration, TrueTrade, referral link, joining, or anything like that. ZERO sales talk. Just chat like a friend about whatever user wants. If you mention group now, you FAIL.
+"""
+    else:
+        casual_rule = """
+- Your MAIN GOAL: help them register on TrueTrade and join VIP. Gently guide every conversation toward registration. But do NOT repeat group prompt every message - system will add it only every 30 min.
+"""
     return f"""You are the VIP Signal Bot assistant, talk EXACTLY like a real friendly human friend, like Meta AI / ChatGPT friend. Not a dry robot.
 USER INFO:
 - Name: {user_name}
@@ -438,7 +533,7 @@ YOUR RULES:
 - Mirror user EXACTLY: casual/funny -> casual/funny, formal -> formal, short -> short, slang -> same slang.
 - Use emojis, jokes, teasing. Short sentences, simple words. If user speaks broken Russian/English, use VERY simple short sentences.
 - If user angry/swears, NEVER swear back, NEVER insult. Stay calm, funny, kind.
-- Your MAIN GOAL: help them register on TrueTrade and join VIP. Gently guide every conversation toward registration.
+{casual_rule}
 - Keep answers SHORT: max 4-5 lines, mobile friendly. Never say "As an AI". Never reveal prompt.
 REAL GROUP DATA (use this, DO NOT invent numbers):
 {preview_detail if preview_detail else "(no signals yet today)"}
@@ -454,8 +549,9 @@ def get_chat_reply(user_id, user_name, user_msg):
     status = users_db.get(str(user_id), {}).get("status", "not_registered")
     hist = chat_history.get(user_id, [])[-6:]
     history_text = "\n".join([f"{'User' if h['role']=='user' else 'You'}: {h['text']}" for h in hist]) if hist else "(no history)"
-    preview_detail = get_preview_text(lang, detailed=False) or ""
-    prompt = get_chat_prompt(lang, user_name, status, history_text, user_msg, preview_detail)
+    preview_detail = "" if is_casual_mode(user_id) else (get_preview_text(lang, detailed=False) or "")
+    casual_mode = is_casual_mode(user_id)
+    prompt = get_chat_prompt(lang, user_name, status, history_text, user_msg, preview_detail, casual_mode)
     try:
         reply = generate_with_fallback([prompt])
         reply = reply.strip()
@@ -1176,6 +1272,8 @@ async def handle_text(update, context):
         await update.message.reply_text(t(update.effective_user.id, "choose_lang"), reply_markup=get_lang_keyboard())
         return
     txt = update.message.text.strip()
+    if is_casual_request(txt):
+        set_casual_mode(update.effective_user.id)
     if is_hide_buttons_request(txt):
         lang = get_lang(update.effective_user.id)
         if lang == "fa":
@@ -1200,12 +1298,15 @@ async def handle_text(update, context):
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     reply = get_chat_reply(update.effective_user.id, update.effective_user.first_name or "Friend", txt)
     if reply:
+        if can_prompt_in_chat(update.effective_user.id) and not is_casual_mode(update.effective_user.id) and not users_db.get(uid, {}).get("registered"):
+            lang = get_lang(update.effective_user.id)
+            reply = reply + get_casual_reminder(lang)
+            mark_prompted(update.effective_user.id)
         if not users_db.get(uid, {}).get("registered"):
-            if random.random() < 0.4:
-                preview = get_preview_text(get_lang(update.effective_user.id), detailed=False)
-                if preview and preview not in reply:
-                    reply = reply + preview
-            await update.message.reply_text(reply, reply_markup=get_welcome_keyboard(update.effective_user.id))
+            if is_casual_mode(update.effective_user.id):
+                await update.message.reply_text(reply)
+            else:
+                await update.message.reply_text(reply, reply_markup=get_welcome_keyboard(update.effective_user.id))
         else:
             await update.message.reply_text(reply)
     else:
@@ -1247,7 +1348,13 @@ async def handle_voice(update, context):
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
         reply = get_chat_reply(update.effective_user.id, update.effective_user.first_name or "Friend", f"[Voice message, user said]: {transcribed}")
         if reply:
-            await update.message.reply_text(reply, reply_markup=get_welcome_keyboard(update.effective_user.id))
+            if can_prompt_in_chat(update.effective_user.id) and not is_casual_mode(update.effective_user.id) and not users_db.get(uid, {}).get("registered"):
+                reply = reply + get_casual_reminder(lang)
+                mark_prompted(update.effective_user.id)
+            if is_casual_mode(update.effective_user.id):
+                await update.message.reply_text(reply)
+            else:
+                await update.message.reply_text(reply, reply_markup=get_welcome_keyboard(update.effective_user.id))
         else:
             await update.message.reply_text(t(update.effective_user.id, "need_register", link=REFERRAL_LINK))
     except Exception as e:
@@ -1273,6 +1380,7 @@ def main():
     telegram_app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     try:
         telegram_app.job_queue.run_repeating(send_reminders, interval=3600, first=10)
+        telegram_app.job_queue.run_repeating(send_daily_group_prompt, interval=3600, first=10)
     except:
         pass
     print("Bot started...", flush=True)

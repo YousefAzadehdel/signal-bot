@@ -124,6 +124,29 @@ def unban_user(uid):
     banned_users.discard(str(uid))
     save_banned()
 
+# ===== عددها: فیکس 0.000235 و 61,234 =====
+NUM_PATTERN = r'(\d[\d,]*\.?\d*(?:e-?\d+)?)'
+
+def clean_number(s):
+    if not s:
+        return s
+    s = s.strip().replace(" ", "")
+    if "," in s and "." in s:
+        s = s.replace(",", "")
+    elif "," in s:
+        parts = s.split(",")
+        if len(parts) == 2 and len(parts[1]) == 3 and len(parts[0]) >= 1 and parts[0] != "0":
+            s = s.replace(",", "")
+        else:
+            s = s.replace(",", ".")
+    try:
+        if "e" in s.lower():
+            f = float(s)
+            s = ('%.10f' % f).rstrip('0').rstrip('.')
+    except:
+        pass
+    return s
+
 # ===== آمار گروه =====
 def today_key():
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
@@ -339,18 +362,13 @@ FOOTER = """
 """
 
 PROMPT = """You are a trading signal assistant. Convert this to ENGLISH ONLY signal.
-
 There are 3 possible inputs:
 1. TEXT ONLY: e.g. ارز: LTC فروش ورود: 45.38 حد سود 1: 45.08 حد ضرر: 45.69
 2. PHOTO ONLY: screenshot with chart + text inside image like LTC/USDT Sell Enter Limit: 45.38 TP1: 45.08 SL: 45.69
 3. PHOTO + CAPTION: chart image + caption text. Use BOTH. Caption has priority if conflict.
-
 Also: PHOTO ONLY CHART: if no text in image, read the chart. Green box = LONG, Red box = SHORT. Top of box = TP, Bottom = Entry/SL. Read numbers from Y-axis.
-
 Output EXACTLY like this - no emojis, no extra lines:
-
 LTC SHORT
-
 Entry : 45.38
 TP1 = 45.08
 TP2 = 44.76
@@ -359,7 +377,6 @@ TP4 = 44.13
 TP5 = 43.90
 TP6 = 43.70
 SL = 45.69
-
 Rules:
 - Output MUST be 100% ENGLISH. Never Persian.
 - Translate: Sell / فروش = SHORT, Buy / خرید = LONG
@@ -367,9 +384,16 @@ Rules:
 - Entry: From Enter Limit / Entry / ورود / MARKET. If By Market / SELL MARKET / BUY MARKET write By Market.
 - TPs: EXACTLY same number as source. If 6 TPs, output 6. If 1 TP, output 1. Supports up to TP6. Never invent, never delete.
 - SL: From Stop Loss / حد ضرر / STOP. Remove (0.68%) - only number.
+- NUMBERS - VERY IMPORTANT, DO NOT SHORTEN:
+    * Keep FULL number exactly as in source. NEVER round, NEVER shorten.
+    * If source is 0.000235, output 0.000235 - NOT 0.0002, NOT 0.00023.
+    * If source is 0.000220, output 0.000220 - keep all zeros after dot.
+    * If source is 61,234 or 61234 or 61.234 - output 61234 - remove comma, keep full number. NEVER output only 61.
+    * If source is 61234.56, output 61234.56.
+    * If source is 0.0002, output 0.0002.
 - Ignore Forwarded from, Timeframe, emojis.
 - Keep numbers exactly as in source.
-- If input is NOT a trading signal (greeting, hello, random text), output exactly: NOT_A_SIGNAL
+- If input is NOT a trading signal, output exactly: NOT_A_SIGNAL
 """
 
 PROMPT_CHART_ONLY = """Read this TradingView chart. Output ONLY:
@@ -388,6 +412,7 @@ Rules:
 - Green box = LONG, Red box = SHORT. Read numbers from right Y-axis labels.
 - Top of red box = SL, blue lines / green boxes = TPs.
 - Output only TPs that exist in source, up to TP6. If TP is empty, skip it. Never invent TPs.
+- NUMBERS: Keep FULL number. 0.000235 -> 0.000235, 61,234 -> 61234, never shorten to 61.
 - No explanation, English only.
 If this is NOT a trading chart, output exactly: NOT_A_SIGNAL"""
 
@@ -493,16 +518,16 @@ def normalize_signal(raw_text):
         if re.search(r'By Market', text, re.I):
             entry = "By Market"
         else:
-            m_entry = re.search(r'(?:Entry|Enter Limit|Enter|Limit)\s*[:\-–=]?\s*([0-9]+\.[0-9]+|[0-9]+)', text, re.I)
+            m_entry = re.search(r'(?:Entry|Enter Limit|Enter|Limit)\s*[:\-–=]?\s*' + NUM_PATTERN, text, re.I)
             if m_entry:
-                entry = m_entry.group(1)
+                entry = clean_number(m_entry.group(1))
         tps = []
-        for m in re.finditer(r'TP\s*(\d+)?\s*[:\-–=]?\s*([0-9]+\.[0-9]+|[0-9]+)', text, re.I):
-            v = m.group(2)
+        for m in re.finditer(r'TP\s*(\d+)?\s*[:\-–=]?\s*' + NUM_PATTERN, text, re.I):
+            v = clean_number(m.group(2))
             if v not in tps and v != entry:
                 tps.append(v)
-        m_sl = re.search(r'(?:SL|Stop Loss)\s*[:\-–=]?\s*([0-9]+\.[0-9]+|[0-9]+)', text, re.I)
-        sl = m_sl.group(1) if m_sl else None
+        m_sl = re.search(r'(?:SL|Stop Loss)\s*[:\-–=]?\s*' + NUM_PATTERN, text, re.I)
+        sl = clean_number(m_sl.group(1)) if m_sl else None
         if not entry or not tps:
             return text
         lines = [f"{pair} {direction}", "", f"Entry : {entry}"]
@@ -535,20 +560,20 @@ def parse_farsi_signal(text):
         if re.search(r'(By Market|MARKET|مارکت|لحظه|بازار|فعلی)', text, re.I):
             entry = "By Market"
         else:
-            m_entry = re.search(r'(?:ورود|Entry|خرید|Enter Limit)\s*[:\-–=]?\s*([0-9]+\.[0-9]+|[0-9]+)', text)
+            m_entry = re.search(r'(?:ورود|Entry|خرید|Enter Limit)\s*[:\-–=]?\s*' + NUM_PATTERN, text)
             if m_entry:
-                entry = m_entry.group(1)
+                entry = clean_number(m_entry.group(1))
         tps = []
-        for m in re.finditer(r'(?:حد\s*سود|تارگت|هدف|TP|Take Profit)\s*(?:اول|دوم|سوم|چهارم|پنجم|ششم|\d+)?\s*[:\-–=]?\s*([0-9]+\.[0-9]+|[0-9]+)', text, re.I):
-            v = m.group(1)
+        for m in re.finditer(r'(?:حد\s*سود|تارگت|هدف|TP|Take Profit)\s*(?:اول|دوم|سوم|چهارم|پنجم|ششم|\d+)?\s*[:\-–=]?\s*' + NUM_PATTERN, text, re.I):
+            v = clean_number(m.group(1))
             if v not in tps and v != entry:
                 tps.append(v)
         if len(tps) <= 1:
             m_line = re.search(r'(?:حد\s*سود|تارگت).*?[:\-–=]\s*([0-9.,\s/]+)', text, re.I)
             if m_line and "/" in m_line.group(1):
-                tps = [x.strip() for x in m_line.group(1).split("/") if x.strip()]
-        m_sl = re.search(r'(?:حد\s*ضرر|استاپ|SL|Stop Loss)\s*[:\-–=]?\s*([0-9]+\.[0-9]+|[0-9]+)', text)
-        sl = m_sl.group(1) if m_sl else None
+                tps = [clean_number(x.strip()) for x in m_line.group(1).split("/") if x.strip()]
+        m_sl = re.search(r'(?:حد\s*ضرر|استاپ|SL|Stop Loss)\s*[:\-–=]?\s*' + NUM_PATTERN, text)
+        sl = clean_number(m_sl.group(1)) if m_sl else None
         if not entry or not tps:
             return None
         lines = [f"{pair} {direction}", "", f"Entry : {entry}"]
@@ -1255,4 +1280,4 @@ def main():
 
 if __name__ == '__main__':
     threading.Thread(target=run_flask, daemon=True).start()
-    main() 
+    main()

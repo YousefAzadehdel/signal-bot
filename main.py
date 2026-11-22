@@ -28,8 +28,6 @@ ADMIN_IDS = [5386696088]
 
 REFERRAL_LINK = "https://www.thetruetrade.io/r/37681671"
 REFERRAL_CODE = "37681671"
-
-# لینک نهایی مستقیم - عکس دوم - دیگه عوضش نکن
 GROUP_LINK = "https://t.me/+oUUtnySqTnY1M2M6"
 
 DATA_FILE = "users.json"
@@ -53,6 +51,7 @@ def save_users(data):
 users_db = load_users()
 pending_joins = {}
 pending_items = {}
+pending_confirms = {}
 
 MODELS = ["gemini-3.5-flash-lite", "gemini-3.5-flash"]
 client = genai.Client(api_key=GEMINI_KEY)
@@ -134,6 +133,13 @@ Rules:
 - Output only TPs that exist in source, up to TP6. If TP is empty, skip it. Never invent TPs.
 - No explanation, English only.
 If this is NOT a trading chart, output exactly: NOT_A_SIGNAL"""
+
+# --- تشخیص اینکه این محتوا سیگنال جدیده یا نتیجه؟ ---
+PROMPT_CLASSIFY = """Look at this image / text. Answer with ONE word only:
+- If it is a NEW trading signal (has Entry + TP + SL, or a chart with Entry/TP/SL boxes, or a signal to open a trade) -> output: SIGNAL
+- If it is a RESULT of a trade (profit/loss screenshot, +13% / -16%, TP hit, SL hit, closed trade, PNL) -> output: RESULT
+- If it is neither -> output: UNKNOWN
+Output ONLY one word: SIGNAL or RESULT or UNKNOWN"""
 
 def to_en_num(s):
     fa = "۰۱۲۳۴۵۶۷۸۹"
@@ -302,7 +308,6 @@ def get_group_keyboard(link=None):
         [InlineKeyboardButton("🇷🇺 👥 Войти в VIP-группу", url=use_link)],
     ])
 
-# --- دکمه های انتخاب نوع: سیگنال / ورود / استاپ / TP1 تا TP6 ---
 def get_choice_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📊 سیگنال", callback_data="choice_signal")],
@@ -330,79 +335,94 @@ STATUS_TEXTS = {
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if is_admin(update):
-        await update.message.reply_text(
-            "سلام ادمین!\n"
-            "سیگنال رو بفرست تا بفرستم توی گروه ✅\n"
-            "برای گرفتن لینک رفرال بزن /link"
-        )
+        await update.message.reply_text("سلام ادمین!\nسیگنال رو بفرست تا بفرستم توی گروه ✅\nبرای گرفتن لینک رفرال بزن /link")
         return
     uid = str(user.id)
     if uid in users_db and users_db[uid].get("registered") and users_db[uid].get("status") != "rejected":
         if users_db[uid].get("status") == "approved_by_admin":
             await update.message.reply_text(f"👥 {GROUP_LINK}", reply_markup=get_group_keyboard(GROUP_LINK))
             return
-        await update.message.reply_text(
-            "🇮🇷 تو قبلاً ثبت نامت رو اعلام کردی ✅\n"
-            "🇮🇷 اگه ادمین هنوز تاییدت نکرده، صبر کن یا بزن /reset و از اول شروع کن.\n"
-            "\n"
-            "🇬🇧 You already announced your registration ✅\n"
-            "🇬🇧 If admin hasn't approved yet, wait or press /reset to start again.\n"
-            "\n"
-            "🇷🇺 Вы уже сообщили о регистрации ✅\n"
-            "🇷🇺 Если админ еще не одобрил, подождите или нажмите /reset чтобы начать заново."
-        )
+        await update.message.reply_text("🇮🇷 تو قبلاً ثبت نامت رو اعلام کردی ✅\n🇮🇷 اگه ادمین هنوز تاییدت نکرده، صبر کن یا بزن /reset و از اول شروع کن.\n\n🇬🇧 You already announced your registration ✅\n🇬🇧 If admin hasn't approved yet, wait or press /reset to start again.\n\n🇷🇺 Вы уже сообщили о регистрации ✅\n🇷🇺 Если админ еще не одобрил, подождите или нажмите /reset чтобы начать заново.")
         return
-    msg = (
-        f"🇮🇷 سلام {user.first_name} 👋\n"
-        f"🇬🇧 Hello {user.first_name} 👋\n"
-        f"🇷🇺 Привет, {user.first_name} 👋\n"
-        "\n"
-        "🇮🇷 به ربات سیگنال VIP خوش اومدی!\n"
-        "🇬🇧 Welcome to VIP Signal Bot!\n"
-        "🇷🇺 Добро пожаловать в VIP Signal Bot!\n"
-        "\n"
-        "🇮🇷 برای ورود به گروه VIP باید اول از لینک زیر توی TrueTrade ثبت نام کنی:\n"
-        "🇬🇧 To enter VIP group, first register on TrueTrade with link below:\n"
-        "🇷🇺 Чтобы войти в VIP-группу, сначала зарегистрируйтесь на TrueTrade по ссылке ниже:\n"
-        "\n"
-        f"🔗 {REFERRAL_LINK}\n"
-        "\n"
-        "🇮🇷 مراحل:\n"
-        "🇬🇧 Steps:\n"
-        "🇷🇺 Шаги:\n"
-        "\n"
-        "🇮🇷 1️⃣ روی دکمه ثبت نام بزن و حسابت رو بساز\n"
-        "🇬🇧 1️⃣ Click Register and create account\n"
-        "🇷🇺 1️⃣ Нажмите Регистрация и создайте аккаунт\n"
-        "\n"
-        "🇮🇷 2️⃣ برگرد اینجا و بزن ثبت نام کردم\n"
-        "🇬🇧 2️⃣ Come back and press I Registered\n"
-        "🇷🇺 2️⃣ Вернитесь и нажмите Я зарегистрировался\n"
-        "\n"
-        "🇮🇷 3️⃣ ادمین چک می‌کنه و اگه واقعاً ثبت نام کرده باشی تاییدت می‌کنه ✅\n"
-        "🇬🇧 3️⃣ Admin will check and approve if you really registered ✅\n"
-        "🇷🇺 3️⃣ Админ проверит и одобрит, если вы действительно зарегистрировались ✅"
-    )
+    msg = (f"🇮🇷 سلام {user.first_name} 👋\n🇬🇧 Hello {user.first_name} 👋\n🇷🇺 Привет, {user.first_name} 👋\n\n🇮🇷 به ربات سیگنال VIP خوش اومدی!\n🇬🇧 Welcome to VIP Signal Bot!\n🇷🇺 Добро пожаловать в VIP Signal Bot!\n\n🇮🇷 برای ورود به گروه VIP باید اول از لینک زیر توی TrueTrade ثبت نام کنی:\n🇬🇧 To enter VIP group, first register on TrueTrade with link below:\n🇷🇺 Чтобы войти в VIP-группу, сначала зарегистрируйтесь на TrueTrade по ссылке ниже:\n\n🔗 {REFERRAL_LINK}\n\n🇮🇷 مراحل:\n🇬🇧 Steps:\n🇷🇺 Шаги:\n\n🇮🇷 1️⃣ روی دکمه ثبت نام بزن و حسابت رو بساز\n🇬🇧 1️⃣ Click Register and create account\n🇷🇺 1️⃣ Нажмите Регистрация и создайте аккаунт\n\n🇮🇷 2️⃣ برگرد اینجا و بزن ثبت نام کردم\n🇬🇧 2️⃣ Come back and press I Registered\n🇷🇺 2️⃣ Вернитесь и нажмите Я зарегистрировался\n\n🇮🇷 3️⃣ ادمین چک می‌کنه و اگه واقعاً ثبت نام کرده باشی تاییدت می‌کنه ✅\n🇬🇧 3️⃣ Admin will check and approve if you really registered ✅\n🇷🇺 3️⃣ Админ проверит и одобрит, если вы действительно зарегистрировались ✅")
     await update.message.reply_text(msg, reply_markup=get_welcome_keyboard())
 
 async def link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🇮🇷 لینک رفرال تو:\n"
-        "🇬🇧 Your Referral Link:\n"
-        "🇷🇺 Ваша реферальная ссылка:\n"
-        f"{REFERRAL_LINK}"
-    )
+    await update.message.reply_text(f"🇮🇷 لینک رفرال تو:\n🇬🇧 Your Referral Link:\n🇷🇺 Ваша реферальная ссылка:\n{REFERRAL_LINK}")
 
 async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(update.effective_user.id)
     if uid in users_db:
         del users_db[uid]
         save_users(users_db)
-    await update.message.reply_text(
-        "🇮🇷 پاک شد ✅ حالا دوباره بزن /start\n"
-        "🇬🇧 Reset done ✅ Now press /start\n"
-        "🇷🇺 Сброшено ✅ Теперь нажмите /start"
-    )
+    await update.message.reply_text("🇮🇷 پاک شد ✅ حالا دوباره بزن /start\n🇬🇧 Reset done ✅ Now press /start\n🇷🇺 Сброшено ✅ Теперь нажмите /start")
+
+# --- تابع کمکی: فرستادن به عنوان سیگنال ---
+async def send_as_signal(item, user, context):
+    await context.bot.send_message(chat_id=user.id, text="🇮🇷 دارم تحلیل میکنم... ⏳\n🇬🇧 Analyzing... ⏳\n🇷🇺 Анализирую... ⏳")
+    try:
+        if item["type"] == "text":
+            txt = item["text"]
+            if len(txt) < 10 or not re.search(r'\d', txt):
+                await context.bot.send_message(chat_id=user.id, text="🇮🇷 این سیگنال نیست ❌\n🇬🇧 This is not a signal ❌\n🇷🇺 Это не сигнал ❌")
+                return False
+            fast = parse_farsi_signal(txt)
+            if fast and is_valid_signal(fast):
+                await context.bot.send_message(chat_id=GROUP_ID, text=fast + FOOTER)
+                await context.bot.send_message(chat_id=user.id, text="🇮🇷 فرستادم توی گروه ✅\n🇬🇧 Sent to group ✅\n🇷🇺 Отправлено в группу ✅")
+                return True
+            raw = generate_with_fallback([PROMPT + "\n\nSignal text:\n" + txt])
+            if "NOT_A_SIGNAL" in raw:
+                await context.bot.send_message(chat_id=user.id, text="🇮🇷 این سیگنال نیست ❌\n🇬🇧 This is not a signal ❌\n🇷🇺 Это не сигнал ❌")
+                return False
+            clean = normalize_signal(raw)
+            if not is_valid_signal(clean):
+                await context.bot.send_message(chat_id=user.id, text="🇮🇷 این سیگنال نیست ❌\n🇬🇧 This is not a signal ❌\n🇷🇺 Это не сигнал ❌")
+                return False
+            await context.bot.send_message(chat_id=GROUP_ID, text=clean + FOOTER)
+            await context.bot.send_message(chat_id=user.id, text="🇮🇷 فرستادم توی گروه ✅\n🇬🇧 Sent to group ✅\n🇷🇺 Отправлено в группу ✅")
+            return True
+        else:
+            file = await context.bot.get_file(item["photo_id"])
+            photo_bytes = await file.download_as_bytearray()
+            img_part = genai.types.Part.from_bytes(data=bytes(photo_bytes), mime_type="image/jpeg")
+            caption_orig = item.get("caption", "")
+            if caption_orig:
+                fast = parse_farsi_signal(caption_orig)
+                if fast and is_valid_signal(fast):
+                    await context.bot.send_message(chat_id=GROUP_ID, text=fast + FOOTER)
+                    await context.bot.send_message(chat_id=user.id, text="🇮🇷 فرستادم توی گروه ✅\n🇬🇧 Sent to group ✅\n🇷🇺 Отправлено в группу ✅")
+                    return True
+                raw = generate_with_fallback([PROMPT + f"\n\nCaption text (use this too):\n{caption_orig}\n\nAlso read text inside image.", img_part])
+            else:
+                raw = generate_with_fallback([PROMPT_CHART_ONLY, img_part])
+            if "NOT_A_SIGNAL" in raw:
+                await context.bot.send_message(chat_id=user.id, text="🇮🇷 این عکس سیگنال نیست ❌\n🇬🇧 This photo is not a signal ❌\n🇷🇺 Это фото не сигнал ❌")
+                return False
+            clean = normalize_signal(raw)
+            if not is_valid_signal(clean):
+                await context.bot.send_message(chat_id=user.id, text="🇮🇷 نتونستم از عکس سیگنال دربیارم ❌\n🇬🇧 Could not extract signal from photo ❌\n🇷🇺 Не удалось извлечь сигнал из фото ❌")
+                return False
+            await context.bot.send_message(chat_id=GROUP_ID, text=clean + FOOTER)
+            await context.bot.send_message(chat_id=user.id, text="🇮🇷 فرستادم توی گروه ✅\n🇬🇧 Sent to group ✅\n🇷🇺 Отправлено в группу ✅")
+            return True
+    except Exception as e:
+        await context.bot.send_message(chat_id=user.id, text=f"خطا / Error / Ошибка: {e}")
+        return False
+
+async def send_as_status(item, user, context, choice):
+    status = STATUS_TEXTS.get(choice, "")
+    try:
+        if item["type"] == "photo":
+            await context.bot.send_photo(chat_id=GROUP_ID, photo=item["photo_id"], caption=status)
+        else:
+            final_text = f"{item['text']}\n\n{status}"
+            await context.bot.send_message(chat_id=GROUP_ID, text=final_text)
+        await context.bot.send_message(chat_id=user.id, text="فرستادم توی گروه ✅")
+        return True
+    except Exception as e:
+        await context.bot.send_message(chat_id=user.id, text=f"خطا: {e}")
+        return False
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -410,97 +430,114 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = query.from_user
     uid = str(user.id)
 
-    # --- دکمه های انتخاب نوع: عکس یا متن ---
+    # --- تایید اشتباه: کاربر گفته سیگناله ولی در واقع نتیجه بوده یا برعکس ---
+    if query.data.startswith("confirm_"):
+        conf = pending_confirms.get(user.id)
+        if not conf:
+            await query.edit_message_text("چیزی پیدا نشد، دوباره بفرست ❌")
+            return
+        item = conf["item"]
+        original_choice = conf["original_choice"]
+        if query.data == "confirm_as_signal":
+            await query.edit_message_text("باشه، به عنوان سیگنال می‌فرستم... ✅")
+            await send_as_signal(item, user, context)
+        elif query.data == "confirm_keep":
+            await query.edit_message_text("باشه، همون انتخاب خودت رو می‌فرستم... ✅")
+            await send_as_status(item, user, context, original_choice)
+        elif query.data == "confirm_cancel":
+            await query.edit_message_text("کنسل شد ❌ دوباره بفرست")
+        if user.id in pending_confirms:
+            del pending_confirms[user.id]
+        if user.id in pending_items:
+            del pending_items[user.id]
+        return
+
     if query.data.startswith("choice_"):
         item = pending_items.get(user.id)
         if not item:
             await query.edit_message_text("چیزی پیدا نشد، دوباره بفرست ❌")
             return
 
-        # --- سیگنال ---
+        # --- اگه زد سیگنال ولی در واقع نتیجه بود ---
         if query.data == "choice_signal":
-            await query.edit_message_text("🇮🇷 دارم تحلیل میکنم... ⏳\n🇬🇧 Analyzing... ⏳\n🇷🇺 Анализирую... ⏳")
-            try:
-                if item["type"] == "text":
-                    txt = item["text"]
-                    if len(txt) < 10 or not re.search(r'\d', txt):
-                        await context.bot.send_message(chat_id=user.id, text="🇮🇷 این سیگنال نیست ❌\n🇬🇧 This is not a signal ❌\n🇷🇺 Это не сигнал ❌")
-                        return
-                    fast = parse_farsi_signal(txt)
-                    if fast and is_valid_signal(fast):
-                        await context.bot.send_message(chat_id=GROUP_ID, text=fast + FOOTER)
-                        await context.bot.send_message(chat_id=user.id, text="🇮🇷 فرستادم توی گروه ✅\n🇬🇧 Sent to group ✅\n🇷🇺 Отправлено в группу ✅")
-                        return
-                    raw = generate_with_fallback([PROMPT + "\n\nSignal text:\n" + txt])
-                    if "NOT_A_SIGNAL" in raw:
-                        await context.bot.send_message(chat_id=user.id, text="🇮🇷 این سیگنال نیست ❌\n🇬🇧 This is not a signal ❌\n🇷🇺 Это не сигнал ❌")
-                        return
-                    clean = normalize_signal(raw)
-                    if not is_valid_signal(clean):
-                        await context.bot.send_message(chat_id=user.id, text="🇮🇷 این سیگنال نیست ❌\n🇬🇧 This is not a signal ❌\n🇷🇺 Это не сигнал ❌")
-                        return
-                    await context.bot.send_message(chat_id=GROUP_ID, text=clean + FOOTER)
-                    await context.bot.send_message(chat_id=user.id, text="🇮🇷 فرستادم توی گروه ✅\n🇬🇧 Sent to group ✅\n🇷🇺 Отправлено в группу ✅")
-                else:
-                    file = await context.bot.get_file(item["photo_id"])
-                    photo_bytes = await file.download_as_bytearray()
-                    img_part = genai.types.Part.from_bytes(data=bytes(photo_bytes), mime_type="image/jpeg")
-                    caption_orig = item.get("caption", "")
-                    if caption_orig:
-                        fast = parse_farsi_signal(caption_orig)
-                        if fast and is_valid_signal(fast):
-                            await context.bot.send_message(chat_id=GROUP_ID, text=fast + FOOTER)
-                            await context.bot.send_message(chat_id=user.id, text="🇮🇷 فرستادم توی گروه ✅\n🇬🇧 Sent to group ✅\n🇷🇺 Отправлено в группу ✅")
-                            return
-                        raw = generate_with_fallback([PROMPT + f"\n\nCaption text (use this too):\n{caption_orig}\n\nAlso read text inside image.", img_part])
-                    else:
-                        raw = generate_with_fallback([PROMPT_CHART_ONLY, img_part])
-                    if "NOT_A_SIGNAL" in raw:
-                        await context.bot.send_message(chat_id=user.id, text="🇮🇷 این عکس سیگنال نیست ❌\n🇬🇧 This photo is not a signal ❌\n🇷🇺 Это фото не сигнал ❌")
-                        return
-                    clean = normalize_signal(raw)
-                    if not is_valid_signal(clean):
-                        await context.bot.send_message(chat_id=user.id, text="🇮🇷 نتونستم از عکس سیگنال دربیارم ❌\n🇬🇧 Could not extract signal from photo ❌\n🇷🇺 Не удалось извлечь сигнал из фото ❌")
-                        return
-                    await context.bot.send_message(chat_id=GROUP_ID, text=clean + FOOTER)
-                    await context.bot.send_message(chat_id=user.id, text="🇮🇷 فرستادم توی گروه ✅\n🇬🇧 Sent to group ✅\n🇷🇺 Отправлено в группу ✅")
-            except Exception as e:
-                await context.bot.send_message(chat_id=user.id, text=f"خطا / Error / Ошибка: {e}")
-            finally:
-                if user.id in pending_items:
-                    del pending_items[user.id]
-            return
-
-        # --- ورود / استاپ / TP1 تا TP6 ---
-        status = STATUS_TEXTS.get(query.data, "")
-        try:
-            if item["type"] == "photo":
-                await context.bot.send_photo(chat_id=GROUP_ID, photo=item["photo_id"], caption=status)
-            else:
-                final_text = f"{item['text']}\n\n{status}"
-                await context.bot.send_message(chat_id=GROUP_ID, text=final_text)
-            await query.edit_message_text("فرستادم توی گروه ✅")
-        except Exception as e:
-            await query.edit_message_text(f"خطا: {e}")
-        finally:
+            # بررسی سریع با متن: اگه متن نتیجه سود/ضرر داره (مثلا +13% یا PNL)
+            check_text = ""
+            if item["type"] == "text":
+                check_text = item["text"]
+            elif item["type"] == "photo":
+                check_text = item.get("caption", "")
+            # اگه متن مشخصا نتیجه بود
+            if re.search(r'(\+\s*\d+\s*%|-\s*\d+\s*%|PNL|سود|ضرر|TP.*خورد|استاپ.*خورد)', check_text, re.I) and not is_valid_signal(parse_farsi_signal(check_text) or ""):
+                pending_confirms[user.id] = {"item": item, "original_choice": query.data}
+                await query.edit_message_text(
+                    "⚠️ صبر کن!\n\n🇮🇷 این به نظر نتیجه معامله میاد، نه سیگنال جدید!\n🇬🇧 This looks like a trade RESULT, not a new signal!\n🇷🇺 Это похоже на РЕЗУЛЬТАТ сделки, а не на новый сигнал!\n\nمی‌خوای چی کار کنم؟",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("✅ بازم به عنوان سیگنال بفرست", callback_data="confirm_as_signal")],
+                        [InlineKeyboardButton("❌ کنسل کن", callback_data="confirm_cancel")],
+                    ])
+                )
+                return
+            await send_as_signal(item, user, context)
             if user.id in pending_items:
                 del pending_items[user.id]
+            return
+
+        # --- اگه زد ورود / استاپ / TP ولی در واقع سیگنال جدید بود ---
+        # بررسی ۱: متن یا کپشن سیگنال کامل داره؟
+        check_text2 = ""
+        if item["type"] == "text":
+            check_text2 = item["text"]
+        elif item["type"] == "photo":
+            check_text2 = item.get("caption", "")
+
+        is_signal_by_text = False
+        if check_text2:
+            fast2 = parse_farsi_signal(check_text2)
+            if fast2 and is_valid_signal(fast2):
+                is_signal_by_text = True
+            # اگه توی متن Entry + TP + SL هست
+            elif re.search(r'(Entry|ورود|Enter)', check_text2, re.I) and re.search(r'(TP|حد سود|تارگت)', check_text2, re.I) and re.search(r'(SL|حد ضرر|استاپ)', check_text2, re.I):
+                is_signal_by_text = True
+
+        # بررسی ۲: اگه عکس بدون کپشنه، با Gemini چک کن که سیگناله یا نتیجه؟
+        is_signal_by_image = False
+        if item["type"] == "photo" and not is_signal_by_text:
+            try:
+                file = await context.bot.get_file(item["photo_id"])
+                photo_bytes = await file.download_as_bytearray()
+                img_part = genai.types.Part.from_bytes(data=bytes(photo_bytes), mime_type="image/jpeg")
+                classify = generate_with_fallback([PROMPT_CLASSIFY, img_part])
+                if "SIGNAL" in classify.upper():
+                    is_signal_by_image = True
+            except Exception as e:
+                print("classify error:", e)
+
+        if is_signal_by_text or is_signal_by_image:
+            # این اشتباه کاربره! بپرس
+            pending_confirms[user.id] = {"item": item, "original_choice": query.data}
+            label_map = {"choice_entry": "ورود به معامله", "choice_sl": "استاپ", "choice_tp1": "TP1", "choice_tp2": "TP2", "choice_tp3": "TP3", "choice_tp4": "TP4", "choice_tp5": "TP5", "choice_tp6": "TP6"}
+            clicked = label_map.get(query.data, query.data)
+            await query.edit_message_text(
+                f"⚠️ صبر کن! اشتباه زدی؟\n\n🇮🇷 تو زدی «{clicked}» ولی این به نظر یه سیگنال جدیده، نه نتیجه!\n🇬🇧 You clicked «{clicked}» but this looks like a NEW SIGNAL!\n🇷🇺 Вы нажали «{clicked}», но это похоже на НОВЫЙ СИГНАЛ!\n\nمی‌خوای به عنوان سیگنال بفرستم؟",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("✅ آره، به عنوان سیگنال بفرست", callback_data="confirm_as_signal")],
+                    [InlineKeyboardButton("❌ نه، همون انتخاب خودم رو بفرست", callback_data="confirm_keep")],
+                    [InlineKeyboardButton("🚫 کنسل کن", callback_data="confirm_cancel")],
+                ])
+            )
+            return
+
+        # اگه واقعا نتیجه بود، بفرست
+        await send_as_status(item, user, context, query.data)
+        if user.id in pending_items:
+            del pending_items[user.id]
         return
 
     if query.data == "registered":
         if user.id in ADMIN_IDS:
             return
         if users_db.get(uid, {}).get("status") == "approved_by_admin":
-            await query.edit_message_text(
-                "🇮🇷 تو قبلاً توسط ادمین تایید شدی ✅\n"
-                "🇮🇷 حالا روی دکمه زیر بزن تا مستقیم وارد گروه بشی.\n"
-                "\n"
-                "🇬🇧 You were already approved by admin ✅\n"
-                "🇬🇧 Now click below to join group directly.\n"
-                "\n"
-                "🇷🇺 Вы уже были одобрены админом ✅\n"
-                "🇷🇺 Теперь нажмите ниже, чтобы напрямую войти в группу."
-            )
+            await query.edit_message_text("🇮🇷 تو قبلاً توسط ادمین تایید شدی ✅\n🇮🇷 حالا روی دکمه زیر بزن تا مستقیم وارد گروه بشی.\n\n🇬🇧 You were already approved by admin ✅\n🇬🇧 Now click below to join group directly.\n\n🇷🇺 Вы уже были одобрены админом ✅\n🇷🇺 Теперь нажмите ниже, чтобы напрямую войти в группу.")
             try:
                 fresh_link = await get_fresh_group_link(context)
                 await context.bot.send_message(chat_id=user.id, text=f"👥 {fresh_link}", reply_markup=get_group_keyboard(fresh_link))
@@ -509,36 +546,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         users_db[uid] = {"registered": True, "username": user.username or "", "first_name": user.first_name or "", "status": "waiting_admin"}
         save_users(users_db)
-        await query.edit_message_text(
-            "🇮🇷 ثبت شد ✅\n"
-            "🇮🇷 درخواستت رفت برای ادمین.\n"
-            "🇮🇷 ادمین توی TrueTrade چک می‌کنه که با لینک رفرال ثبت نام کرده باشی.\n"
-            "🇮🇷 اگه تایید بشی، بهت خبر میدم و بعد می‌تونی مستقیم وارد گروه بشی.\n"
-            "🇮🇷 لطفاً صبور باش 🙏\n"
-            "\n"
-            "🇬🇧 Registered ✅\n"
-            "🇬🇧 Your request sent to admin.\n"
-            "🇬🇧 Admin will check on TrueTrade if you registered with referral link.\n"
-            "🇬🇧 If approved, I will notify you and then you can join group directly.\n"
-            "🇬🇧 Please be patient 🙏\n"
-            "\n"
-            "🇷🇺 Зарегистрировано ✅\n"
-            "🇷🇺 Ваш запрос отправлен админу.\n"
-            "🇷🇺 Админ проверит на TrueTrade, зарегистрировались ли вы по реферальной ссылке.\n"
-            "🇷🇺 Если одобрят, я уведомлю вас, и вы сможете напрямую войти в группу.\n"
-            "🇷🇺 Пожалуйста, наберитесь терпения 🙏"
-        )
+        await query.edit_message_text("🇮🇷 ثبت شد ✅\n🇮🇷 درخواستت رفت برای ادمین.\n🇮🇷 ادمین توی TrueTrade چک می‌کنه که با لینک رفرال ثبت نام کرده باشی.\n🇮🇷 اگه تایید بشی، بهت خبر میدم و بعد می‌تونی مستقیم وارد گروه بشی.\n🇮🇷 لطفاً صبور باش 🙏\n\n🇬🇧 Registered ✅\n🇬🇧 Your request sent to admin.\n🇬🇧 Admin will check on TrueTrade if you registered with referral link.\n🇬🇧 If approved, I will notify you and then you can join group directly.\n🇬🇧 Please be patient 🙏\n\n🇷🇺 Зарегистрировано ✅\n🇷🇺 Ваш запрос отправлен админу.\n🇷🇺 Админ проверит на TrueTrade, зарегистрировались ли вы по реферальной ссылке.\n🇷🇺 Если одобрят, я уведомлю вас, и вы сможете напрямую войти в группу.\n🇷🇺 Пожалуйста, наберитесь терпения 🙏")
         for admin_id in ADMIN_IDS:
             try:
-                await context.bot.send_message(
-                    chat_id=admin_id,
-                    text=f"🆕 درخواست ورود جدید:\n\n"
-                         f"👤 {user.first_name} (@{user.username or 'بدون یوزرنیم'})\n"
-                         f"🆔 ID: {user.id}\n"
-                         f"🔗 کد رفرال: {REFERRAL_CODE}\n\n"
-                         f"برو توی پنل TrueTrade چک کن.",
-                    reply_markup=get_admin_keyboard(user.id)
-                )
+                await context.bot.send_message(chat_id=admin_id, text=f"🆕 درخواست ورود جدید:\n\n👤 {user.first_name} (@{user.username or 'بدون یوزرنیم'})\n🆔 ID: {user.id}\n🔗 کد رفرال: {REFERRAL_CODE}\n\nبرو توی پنل TrueTrade چک کن.", reply_markup=get_admin_keyboard(user.id))
             except Exception as e:
                 print("notify admin error:", e)
         return
@@ -549,68 +560,30 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         target_id = query.data.split("_")[1]
         target_data = users_db.get(target_id, {})
-
         if query.data.startswith("approve_"):
             users_db[target_id] = {**target_data, "status": "approved_by_admin"}
             save_users(users_db)
-            await query.edit_message_text(
-                f"✅ تایید شد:\n{target_data.get('first_name','')} (@{target_data.get('username','')}) - ID: {target_id}\n\nلینک گروه براش فرستاده شد."
-            )
+            await query.edit_message_text(f"✅ تایید شد:\n{target_data.get('first_name','')} (@{target_data.get('username','')}) - ID: {target_id}\n\nلینک گروه براش فرستاده شد.")
             if target_id in pending_joins:
                 try:
                     chat_id = pending_joins[target_id]
                     await context.bot.approve_chat_join_request(chat_id=chat_id, user_id=int(target_id))
                     del pending_joins[target_id]
-                    await context.bot.send_message(
-                        chat_id=int(target_id),
-                        text="🇮🇷 تبریک! ادمین تاییدت کرد و وارد گروه VIP شدی 🎉\n"
-                             "🇬🇧 Congrats! Admin approved you and you joined VIP group 🎉\n"
-                             "🇷🇺 Поздравляем! Админ одобрил вас, и вы вошли в VIP-группу 🎉"
-                    )
+                    await context.bot.send_message(chat_id=int(target_id), text="🇮🇷 تبریک! ادمین تاییدت کرد و وارد گروه VIP شدی 🎉\n🇬🇧 Congrats! Admin approved you and you joined VIP group 🎉\n🇷🇺 Поздравляем! Админ одобрил вас, и вы вошли в VIP-группу 🎉")
                 except Exception as e:
                     print("auto approve pending error:", e)
             else:
                 try:
                     fresh_link = await get_fresh_group_link(context)
-                    await context.bot.send_message(
-                        chat_id=int(target_id),
-                        text="🇮🇷 تبریک! ادمین ثبت نامت رو تایید کرد ✅\n"
-                             "🇮🇷 حالا روی دکمه زیر بزن تا مستقیم وارد گروه بشی.\n"
-                             "\n"
-                             "🇬🇧 Congrats! Admin approved your registration ✅\n"
-                             "🇬🇧 Now click below to join group directly.\n"
-                             "\n"
-                             "🇷🇺 Поздравляем! Админ одобрил вашу регистрацию ✅\n"
-                             "🇷🇺 Теперь нажмите ниже, чтобы напрямую войти в группу.\n"
-                             "\n"
-                             f"👥 {fresh_link}",
-                        reply_markup=get_group_keyboard(fresh_link)
-                    )
+                    await context.bot.send_message(chat_id=int(target_id), text=f"🇮🇷 تبریک! ادمین ثبت نامت رو تایید کرد ✅\n🇮🇷 حالا روی دکمه زیر بزن تا مستقیم وارد گروه بشی.\n\n🇬🇧 Congrats! Admin approved your registration ✅\n🇬🇧 Now click below to join group directly.\n\n🇷🇺 Поздравляем! Админ одобрил вашу регистрацию ✅\n🇷🇺 Теперь нажмите ниже, чтобы напрямую войти в группу.\n\n👥 {fresh_link}", reply_markup=get_group_keyboard(fresh_link))
                 except:
                     pass
-
         elif query.data.startswith("reject_"):
             users_db[target_id] = {**target_data, "status": "rejected"}
             save_users(users_db)
-            await query.edit_message_text(
-                f"❌ رد شد:\n{target_data.get('first_name','')} (@{target_data.get('username','')}) - ID: {target_id}"
-            )
+            await query.edit_message_text(f"❌ رد شد:\n{target_data.get('first_name','')} (@{target_data.get('username','')}) - ID: {target_id}")
             try:
-                await context.bot.send_message(
-                    chat_id=int(target_id),
-                    text="🇮🇷 متاسفانه درخواستت رد شد ❌\n"
-                         "🇮🇷 ادمین توی TrueTrade چک کرد و ثبت نامت با لینک رفرال پیدا نشد.\n"
-                         "🇮🇷 لطفاً با لینک درست ثبت نام کن و دوباره تلاش کن:\n"
-                         "\n"
-                         "🇬🇧 Unfortunately your request was rejected ❌\n"
-                         "🇬🇧 Admin checked on TrueTrade and your registration with referral link was not found.\n"
-                         "🇬🇧 Please register with correct link and try again:\n"
-                         "\n"
-                         "🇷🇺 К сожалению, ваш запрос был отклонён ❌\n"
-                         "🇷🇺 Админ проверил на TrueTrade, и ваша регистрация по реферальной ссылке не найдена.\n"
-                         "🇷🇺 Пожалуйста, зарегистрируйтесь по правильной ссылке и попробуйте снова:\n"
-                         f"{REFERRAL_LINK}"
-                )
+                await context.bot.send_message(chat_id=int(target_id), text=f"🇮🇷 متاسفانه درخواستت رد شد ❌\n🇮🇷 ادمین توی TrueTrade چک کرد و ثبت نامت با لینک رفرال پیدا نشد.\n🇮🇷 لطفاً با لینک درست ثبت نام کن و دوباره تلاش کن:\n\n🇬🇧 Unfortunately your request was rejected ❌\n🇬🇧 Admin checked on TrueTrade and your registration with referral link was not found.\n🇬🇧 Please register with correct link and try again:\n\n🇷🇺 К сожалению, ваш запрос был отклонён ❌\n🇷🇺 Админ проверил на TrueTrade, и ваша регистрация по реферальной ссылке не найдена.\n🇷🇺 Пожалуйста, зарегистрируйтесь по правильной ссылке и попробуйте снова:\n{REFERRAL_LINK}")
             except:
                 pass
             if target_id in pending_joins:
@@ -628,40 +601,18 @@ async def handle_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE
     if user_data.get("status") == "approved_by_admin":
         try:
             await req.approve()
-            await context.bot.send_message(
-                chat_id=req.from_user.id,
-                text="🇮🇷 تبریک! وارد گروه VIP شدی 🎉\n"
-                     "🇬🇧 Congrats! You joined VIP group 🎉\n"
-                     "🇷🇺 Поздравляем! Вы вошли в VIP-группу 🎉"
-            )
+            await context.bot.send_message(chat_id=req.from_user.id, text="🇮🇷 تبریک! وارد گروه VIP شدی 🎉\n🇬🇧 Congrats! You joined VIP group 🎉\n🇷🇺 Поздравляем! Вы вошли в VIP-группу 🎉")
         except Exception as e:
             print("approve error:", e)
         return
     pending_joins[user_id] = req.chat.id
     try:
-        await context.bot.send_message(
-            chat_id=req.from_user.id,
-            text="🇮🇷 درخواست عضویتت رسید ✅\n"
-                 "🇮🇷 منتظر تایید ادمین باش.\n"
-                 "\n"
-                 "🇬🇧 Your join request received ✅\n"
-                 "🇬🇧 Wait for admin approval.\n"
-                 "\n"
-                 "🇷🇺 Ваш запрос на вступление получен ✅\n"
-                 "🇷🇺 Дождитесь одобрения админа."
-        )
+        await context.bot.send_message(chat_id=req.from_user.id, text="🇮🇷 درخواست عضویتت رسید ✅\n🇮🇷 منتظر تایید ادمین باش.\n\n🇬🇧 Your join request received ✅\n🇬🇧 Wait for admin approval.\n\n🇷🇺 Ваш запрос на вступление получен ✅\n🇷🇺 Дождитесь одобрения админа.")
     except:
         pass
     for admin_id in ADMIN_IDS:
         try:
-            await context.bot.send_message(
-                chat_id=admin_id,
-                text=f"📩 درخواست عضویت جدید توی گروه:\n\n"
-                     f"👤 {req.from_user.first_name} (@{req.from_user.username or 'بدون یوزرنیم'})\n"
-                     f"🆔 ID: {user_id}\n"
-                     f"وضعیت: {user_data.get('status','هنوز ثبت نام نکرده')}",
-                reply_markup=get_admin_keyboard(int(user_id))
-            )
+            await context.bot.send_message(chat_id=admin_id, text=f"📩 درخواست عضویت جدید توی گروه:\n\n👤 {req.from_user.first_name} (@{req.from_user.username or 'بدون یوزرنیم'})\n🆔 ID: {user_id}\nوضعیت: {user_data.get('status','هنوز ثبت نام نکرده')}", reply_markup=get_admin_keyboard(int(user_id)))
         except Exception as e:
             print("notify join error:", e)
 
@@ -669,16 +620,7 @@ async def handle_text(update, context):
     if update.message.chat.type != "private":
         return
     if not is_admin(update):
-        await update.message.reply_text(
-            "🇮🇷 برای ورود به گروه VIP اول باید ثبت نام کنی 👇\n"
-            "🇬🇧 To enter VIP group, first register 👇\n"
-            "🇷🇺 Чтобы войти в VIP-группу, сначала зарегистрируйтесь 👇\n"
-            f"{REFERRAL_LINK}\n"
-            "\n"
-            "🇮🇷 بعد از ثبت نام بزن /start\n"
-            "🇬🇧 After registration press /start\n"
-            "🇷🇺 После регистрации нажмите /start"
-        )
+        await update.message.reply_text(f"🇮🇷 برای ورود به گروه VIP اول باید ثبت نام کنی 👇\n🇬🇧 To enter VIP group, first register 👇\n🇷🇺 Чтобы войти в VIP-группу, сначала зарегистрируйтесь 👇\n{REFERRAL_LINK}\n\n🇮🇷 بعد از ثبت نام بزن /start\n🇬🇧 After registration press /start\n🇷🇺 После регистрации нажмите /start")
         return
     txt = update.message.text.strip()
     pending_items[update.effective_user.id] = {"type": "text", "text": txt}

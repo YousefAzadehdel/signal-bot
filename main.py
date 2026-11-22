@@ -52,6 +52,7 @@ def save_users(data):
 
 users_db = load_users()
 pending_joins = {}
+pending_items = {}
 
 MODELS = ["gemini-3.5-flash-lite", "gemini-3.5-flash"]
 client = genai.Client(api_key=GEMINI_KEY)
@@ -99,6 +100,8 @@ TP1 = 45.08
 TP2 = 44.76
 TP3 = 44.45
 TP4 = 44.13
+TP5 = 43.90
+TP6 = 43.70
 SL = 45.69
 
 Rules:
@@ -106,7 +109,7 @@ Rules:
 - Translate: Sell / فروش = SHORT, Buy / خرید = LONG
 - Pair: Read ANY pair from source. Remove /USDT. LTC/USDT -> LTC, ENAUSDT -> ENA. Never use a fixed list.
 - Entry: From Enter Limit / Entry / ورود / MARKET. If By Market / SELL MARKET / BUY MARKET write By Market.
-- TPs: EXACTLY same number as source. If 4 TPs, output 4. Never invent, never delete.
+- TPs: EXACTLY same number as source. If 6 TPs, output 6. If 1 TP, output 1. Supports up to TP6. Never invent, never delete.
 - SL: From Stop Loss / حد ضرر / STOP. Remove (0.68%) - only number.
 - Ignore Forwarded from, Timeframe, emojis.
 - Keep numbers exactly as in source.
@@ -120,12 +123,15 @@ TP1 = X
 TP2 = X
 TP3 = X
 TP4 = X
+TP5 = X
+TP6 = X
 SL = X
 Rules:
 - Pair: read ANY pair from bottom of image. ENAUSDT -> ENA. Do NOT use a fixed list.
 - If text says SELL MARKET / BUY MARKET, Entry = By Market, Direction = SHORT for SELL, LONG for BUY
 - Green box = LONG, Red box = SHORT. Read numbers from right Y-axis labels.
 - Top of red box = SL, blue lines / green boxes = TPs.
+- Output only TPs that exist in source, up to TP6. If TP is empty, skip it. Never invent TPs.
 - No explanation, English only.
 If this is NOT a trading chart, output exactly: NOT_A_SIGNAL"""
 
@@ -296,6 +302,31 @@ def get_group_keyboard(link=None):
         [InlineKeyboardButton("🇷🇺 👥 Войти в VIP-группу", url=use_link)],
     ])
 
+# --- دکمه های انتخاب نوع: سیگنال / ورود / استاپ / TP1 تا TP6 ---
+def get_choice_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📊 سیگنال", callback_data="choice_signal")],
+        [InlineKeyboardButton("🚀 ورود به معامله", callback_data="choice_entry")],
+        [InlineKeyboardButton("😢 استاپ خوردیم", callback_data="choice_sl")],
+        [InlineKeyboardButton("🔥 TP1 خوردیم", callback_data="choice_tp1"),
+         InlineKeyboardButton("🔥🔥 TP2 خوردیم", callback_data="choice_tp2")],
+        [InlineKeyboardButton("🚀🔥 TP3 خوردیم", callback_data="choice_tp3"),
+         InlineKeyboardButton("🎉 TP4 خوردیم", callback_data="choice_tp4")],
+        [InlineKeyboardButton("💎 TP5 خوردیم", callback_data="choice_tp5"),
+         InlineKeyboardButton("👑 TP6 خوردیم", callback_data="choice_tp6")],
+    ])
+
+STATUS_TEXTS = {
+    "choice_entry": "🇮🇷 ورود به معامله 🚀\n🇬🇧 Entered the Trade 🚀\n🇷🇺 Вход в сделку 🚀",
+    "choice_sl": "🇮🇷 استاپ خوردیم 😢\n🇬🇧 Stop Loss Hit 😢\n🇷🇺 Стоп-лосс сработал 😢",
+    "choice_tp1": "🇮🇷 تارگت ۱ خوردیم 🔥💪\n🇬🇧 TP1 Hit 🔥💪\n🇷🇺 TP1 Достигнут 🔥💪",
+    "choice_tp2": "🇮🇷 تارگت ۲ خوردیم 🔥🔥💪\n🇬🇧 TP2 Hit 🔥🔥💪\n🇷🇺 TP2 Достигнут 🔥🔥💪\n\n🇮🇷 حد ضرر رو فری کنید ✅\n🇬🇧 Move your Stop Loss to Breakeven ✅\n🇷🇺 Переведите стоп-лосс в безубыток ✅",
+    "choice_tp3": "🇮🇷 تارگت ۳ خوردیم 🚀🔥💪\n🇬🇧 TP3 Hit 🚀🔥💪\n🇷🇺 TP3 Достигнут 🚀🔥💪\n\n🇮🇷 حد ضرر رو فری کنید ✅\n🇬🇧 Move your Stop Loss to Breakeven ✅\n🇷🇺 Переведите стоп-лосс в безубыток ✅",
+    "choice_tp4": "🇮🇷 تارگت ۴ خوردیم 🎉🚀🔥\n🇬🇧 TP4 Hit 🎉🚀🔥\n🇷🇺 TP4 Достигнут 🎉🚀🔥\n\n🇮🇷 حد ضرر رو فری کنید ✅\n🇬🇧 Move your Stop Loss to Breakeven ✅\n🇷🇺 Переведите стоп-лосс в безубыток ✅",
+    "choice_tp5": "🇮🇷 تارگت ۵ خوردیم 💎🚀🔥\n🇬🇧 TP5 Hit 💎🚀🔥\n🇷🇺 TP5 Достигнут 💎🚀🔥\n\n🇮🇷 حد ضرر رو فری کنید ✅\n🇬🇧 Move your Stop Loss to Breakeven ✅\n🇷🇺 Переведите стоп-лосс в безубыток ✅",
+    "choice_tp6": "🇮🇷 تارگت ۶ خوردیم 👑💎🚀🔥\n🇬🇧 TP6 Hit 👑💎🚀🔥\n🇷🇺 TP6 Достигнут 👑💎🚀🔥\n\n🇮🇷 حد ضرر رو فری کنید ✅\n🇬🇧 Move your Stop Loss to Breakeven ✅\n🇷🇺 Переведите стоп-лосс в безубыток ✅",
+}
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if is_admin(update):
@@ -378,6 +409,83 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     user = query.from_user
     uid = str(user.id)
+
+    # --- دکمه های انتخاب نوع: عکس یا متن ---
+    if query.data.startswith("choice_"):
+        item = pending_items.get(user.id)
+        if not item:
+            await query.edit_message_text("چیزی پیدا نشد، دوباره بفرست ❌")
+            return
+
+        # --- سیگنال ---
+        if query.data == "choice_signal":
+            await query.edit_message_text("🇮🇷 دارم تحلیل میکنم... ⏳\n🇬🇧 Analyzing... ⏳\n🇷🇺 Анализирую... ⏳")
+            try:
+                if item["type"] == "text":
+                    txt = item["text"]
+                    if len(txt) < 10 or not re.search(r'\d', txt):
+                        await context.bot.send_message(chat_id=user.id, text="🇮🇷 این سیگنال نیست ❌\n🇬🇧 This is not a signal ❌\n🇷🇺 Это не сигнал ❌")
+                        return
+                    fast = parse_farsi_signal(txt)
+                    if fast and is_valid_signal(fast):
+                        await context.bot.send_message(chat_id=GROUP_ID, text=fast + FOOTER)
+                        await context.bot.send_message(chat_id=user.id, text="🇮🇷 فرستادم توی گروه ✅\n🇬🇧 Sent to group ✅\n🇷🇺 Отправлено в группу ✅")
+                        return
+                    raw = generate_with_fallback([PROMPT + "\n\nSignal text:\n" + txt])
+                    if "NOT_A_SIGNAL" in raw:
+                        await context.bot.send_message(chat_id=user.id, text="🇮🇷 این سیگنال نیست ❌\n🇬🇧 This is not a signal ❌\n🇷🇺 Это не сигнал ❌")
+                        return
+                    clean = normalize_signal(raw)
+                    if not is_valid_signal(clean):
+                        await context.bot.send_message(chat_id=user.id, text="🇮🇷 این سیگنال نیست ❌\n🇬🇧 This is not a signal ❌\n🇷🇺 Это не сигнал ❌")
+                        return
+                    await context.bot.send_message(chat_id=GROUP_ID, text=clean + FOOTER)
+                    await context.bot.send_message(chat_id=user.id, text="🇮🇷 فرستادم توی گروه ✅\n🇬🇧 Sent to group ✅\n🇷🇺 Отправлено в группу ✅")
+                else:
+                    file = await context.bot.get_file(item["photo_id"])
+                    photo_bytes = await file.download_as_bytearray()
+                    img_part = genai.types.Part.from_bytes(data=bytes(photo_bytes), mime_type="image/jpeg")
+                    caption_orig = item.get("caption", "")
+                    if caption_orig:
+                        fast = parse_farsi_signal(caption_orig)
+                        if fast and is_valid_signal(fast):
+                            await context.bot.send_message(chat_id=GROUP_ID, text=fast + FOOTER)
+                            await context.bot.send_message(chat_id=user.id, text="🇮🇷 فرستادم توی گروه ✅\n🇬🇧 Sent to group ✅\n🇷🇺 Отправлено в группу ✅")
+                            return
+                        raw = generate_with_fallback([PROMPT + f"\n\nCaption text (use this too):\n{caption_orig}\n\nAlso read text inside image.", img_part])
+                    else:
+                        raw = generate_with_fallback([PROMPT_CHART_ONLY, img_part])
+                    if "NOT_A_SIGNAL" in raw:
+                        await context.bot.send_message(chat_id=user.id, text="🇮🇷 این عکس سیگنال نیست ❌\n🇬🇧 This photo is not a signal ❌\n🇷🇺 Это фото не сигнал ❌")
+                        return
+                    clean = normalize_signal(raw)
+                    if not is_valid_signal(clean):
+                        await context.bot.send_message(chat_id=user.id, text="🇮🇷 نتونستم از عکس سیگنال دربیارم ❌\n🇬🇧 Could not extract signal from photo ❌\n🇷🇺 Не удалось извлечь сигнал из фото ❌")
+                        return
+                    await context.bot.send_message(chat_id=GROUP_ID, text=clean + FOOTER)
+                    await context.bot.send_message(chat_id=user.id, text="🇮🇷 فرستادم توی گروه ✅\n🇬🇧 Sent to group ✅\n🇷🇺 Отправлено в группу ✅")
+            except Exception as e:
+                await context.bot.send_message(chat_id=user.id, text=f"خطا / Error / Ошибка: {e}")
+            finally:
+                if user.id in pending_items:
+                    del pending_items[user.id]
+            return
+
+        # --- ورود / استاپ / TP1 تا TP6 ---
+        status = STATUS_TEXTS.get(query.data, "")
+        try:
+            if item["type"] == "photo":
+                await context.bot.send_photo(chat_id=GROUP_ID, photo=item["photo_id"], caption=status)
+            else:
+                final_text = f"{item['text']}\n\n{status}"
+                await context.bot.send_message(chat_id=GROUP_ID, text=final_text)
+            await query.edit_message_text("فرستادم توی گروه ✅")
+        except Exception as e:
+            await query.edit_message_text(f"خطا: {e}")
+        finally:
+            if user.id in pending_items:
+                del pending_items[user.id]
+        return
 
     if query.data == "registered":
         if user.id in ADMIN_IDS:
@@ -573,66 +681,18 @@ async def handle_text(update, context):
         )
         return
     txt = update.message.text.strip()
-    if len(txt) < 10 or not re.search(r'\d', txt):
-        await update.message.reply_text("🇮🇷 این سیگنال نیست ❌\n🇬🇧 This is not a signal ❌\n🇷🇺 Это не сигнал ❌")
-        return
-    await update.message.reply_text("🇮🇷 دارم تحلیل میکنم... ⏳\n🇬🇧 Analyzing... ⏳\n🇷🇺 Анализирую... ⏳")
-    try:
-        fast = parse_farsi_signal(txt)
-        if fast and is_valid_signal(fast):
-            final = fast + FOOTER
-            await context.bot.send_message(chat_id=GROUP_ID, text=final)
-            await update.message.reply_text("🇮🇷 فرستادم توی گروه ✅\n🇬🇧 Sent to group ✅\n🇷🇺 Отправлено в группу ✅")
-            return
-        raw = generate_with_fallback([PROMPT + "\n\nSignal text:\n" + txt])
-        if "NOT_A_SIGNAL" in raw:
-            await update.message.reply_text("🇮🇷 این سیگنال نیست ❌\n🇬🇧 This is not a signal ❌\n🇷🇺 Это не сигнал ❌")
-            return
-        clean = normalize_signal(raw)
-        if not is_valid_signal(clean):
-            await update.message.reply_text("🇮🇷 این سیگنال نیست ❌\n🇬🇧 This is not a signal ❌\n🇷🇺 Это не сигнал ❌")
-            return
-        final = clean + FOOTER
-        await context.bot.send_message(chat_id=GROUP_ID, text=final)
-        await update.message.reply_text("🇮🇷 فرستادم توی گروه ✅\n🇬🇧 Sent to group ✅\n🇷🇺 Отправлено в группу ✅")
-    except Exception as e:
-        await update.message.reply_text(f"خطا / Error / Ошибка: {e}")
+    pending_items[update.effective_user.id] = {"type": "text", "text": txt}
+    await update.message.reply_text("این چیه؟ 👇", reply_markup=get_choice_keyboard())
 
 async def handle_photo(update, context):
     if update.message.chat.type != "private":
         return
     if not is_admin(update):
         return
-    await update.message.reply_text("🇮🇷 دارم عکس رو میخونم... ⏳\n🇬🇧 Reading photo... ⏳\n🇷🇺 Читаю фото... ⏳")
-    try:
-        photos = update.message.photo
-        photo_obj = photos[-1]
-        photo = await photo_obj.get_file()
-        photo_bytes = await photo.download_as_bytearray()
-        img_part = genai.types.Part.from_bytes(data=bytes(photo_bytes), mime_type="image/jpeg")
-        caption = update.message.caption or ""
-        if caption:
-            fast = parse_farsi_signal(caption)
-            if fast and is_valid_signal(fast):
-                final = fast + FOOTER
-                await context.bot.send_message(chat_id=GROUP_ID, text=final)
-                await update.message.reply_text("🇮🇷 فرستادم توی گروه ✅\n🇬🇧 Sent to group ✅\n🇷🇺 Отправлено в группу ✅")
-                return
-            raw = generate_with_fallback([PROMPT + f"\n\nCaption text (use this too):\n{caption}\n\nAlso read text inside image.", img_part])
-        else:
-            raw = generate_with_fallback([PROMPT_CHART_ONLY, img_part])
-        if "NOT_A_SIGNAL" in raw:
-            await update.message.reply_text("🇮🇷 این عکس سیگنال نیست ❌\n🇬🇧 This photo is not a signal ❌\n🇷🇺 Это фото не сигнал ❌")
-            return
-        clean = normalize_signal(raw)
-        if not is_valid_signal(clean):
-            await update.message.reply_text("🇮🇷 نتونستم از عکس سیگنال دربیارم ❌\n🇬🇧 Could not extract signal from photo ❌\n🇷🇺 Не удалось извлечь сигнал из фото ❌")
-            return
-        final = clean + FOOTER
-        await context.bot.send_message(chat_id=GROUP_ID, text=final)
-        await update.message.reply_text("🇮🇷 فرستادم توی گروه ✅\n🇬🇧 Sent to group ✅\n🇷🇺 Отправлено в группу ✅")
-    except Exception as e:
-        await update.message.reply_text(f"خطا / Error / Ошибка: {e}")
+    photo_id = update.message.photo[-1].file_id
+    caption = update.message.caption or ""
+    pending_items[update.effective_user.id] = {"type": "photo", "photo_id": photo_id, "caption": caption}
+    await update.message.reply_text("این چیه؟ 👇", reply_markup=get_choice_keyboard())
 
 def main():
     request = HTTPXRequest(connect_timeout=30, read_timeout=30, write_timeout=30, pool_timeout=30)

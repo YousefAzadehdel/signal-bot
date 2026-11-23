@@ -158,6 +158,25 @@ async def generate_image_bytes(prompt_text):
     except Exception as e:
         print("image gen error:", e)
     return None
+
+# ===== ادیت عکس =====
+def is_photo_edit_request(msg):
+    if not msg: return False
+    m = msg.lower()
+    kws = ["ادیت کن", "ادیتش کن", "ویرایش کن", "عوض کن", "تغییر بده", "حذف کن", "پاک کن", "سیاه سفید", "سیاه‌سفید", "پس زمینه", "پس‌زمینه", "بک گراند", "آسمون رو", "آسمان رو", "لباسم رو", "موهام رو", "صورت رو", "روشن تر", "تیره تر", "رنگی کن", "کارتونی کن", "انیمه کن", "edit this", "edit photo", "change background", "remove", "make it", "düzenle", "değiştir", "arka plan", "отредактируй", "измени фон", "удали", "сделай черно-белым"]
+    return any(k in m for k in kws)
+
+async def edit_image_bytes(photo_bytes, edit_prompt):
+    try:
+        img_part = genai.types.Part.from_bytes(data=bytes(photo_bytes), mime_type="image/jpeg")
+        resp = client.models.generate_content(model="gemini-2.5-flash-image", contents=[f"Edit this image: {edit_prompt}. Keep the person / main subject exactly the same face, same clothes, same pose, unless user asked to change it. High quality, realistic.", img_part])
+        for part in resp.candidates[0].content.parts:
+            if getattr(part, "inline_data", None):
+                return part.inline_data.data
+    except Exception as e:
+        print("image edit error:", e)
+    return None
+
 def is_image_request(msg):
     m = msg.lower()
     kws = ["عکس بساز", "عکس بکش", "تصویر بساز", "عکس درست کن", "یه عکس", "make an image", "generate image", "draw", "сделай картинку", "нарисуй"]
@@ -165,20 +184,28 @@ def is_image_request(msg):
 
 async def send_voice_reply(context, chat_id, text, lang="fa"):
     if not HAS_TTS: return False
-    tts_lang = {"fa": "fa", "en": "en", "ru": "ru"}.get(lang, "fa")
+    detected = detect_lang_from_msg(text)
+    if detected: lang = detected
+    tts_lang = {"fa": "fa", "en": "en", "ru": "ru", "tr": "tr", "ar": "ar", "de": "de", "fr": "fr", "es": "es", "it": "it", "kk": "kk", "uz": "uz", "uk": "uk", "hi": "hi"}.get(lang, "en")
     try:
-        short = text.strip()
-        if len(short) > 400:
-            parts = re.split(r'[.!؟\n]', short)
-            short = ". ".join([p.strip() for p in parts if p.strip()][:2])[:400]
-        if not short: return False
+        clean = text.strip()
+        clean = clean.replace("رهورد", "رهاورد").replace("Rahord", "Rahavard").replace("Рахорд", "Рахавард")
+        if lang == "fa":
+            clean = clean.replace("رهاورد", "رها ورد")
+        clean = re.sub(r'https?://\S+', ' ', clean)
+        clean = re.sub(r'[^\w\s\u0600-\u06FF\u0400-\u04FFa-zA-Z.,!?؟،\n]', ' ', clean)
+        clean = re.sub(r'\s+', ' ', clean).strip()
+        if len(clean) > 400:
+            parts = re.split(r'[.!؟\n]', clean)
+            clean = ". ".join([p.strip() for p in parts if p.strip()][:2])[:400]
+        if not clean: return False
         buf = BytesIO()
-        gTTS(text=short, lang=tts_lang, slow=False).write_to_fp(buf)
+        gTTS(text=clean, lang=tts_lang, slow=False).write_to_fp(buf)
         buf.seek(0)
         await context.bot.send_voice(chat_id=chat_id, voice=buf)
         return True
     except Exception as e:
-        print("tts error:", e)
+        print(f"tts error lang={lang} tts_lang={tts_lang}:", e)
         return False
 def is_voice_request(msg):
     m = msg.lower()
@@ -193,8 +220,12 @@ def unban_user(uid):
     banned_users.discard(str(uid)); save_banned()
 
 def detect_lang_from_msg(msg):
-    if re.search(r'[а-яА-ЯёЁ]', msg): return "ru"
     if re.search(r'[\u0600-\u06FF]', msg): return "fa"
+    if re.search(r'[а-яА-ЯёЁ]', msg): return "ru"
+    if re.search(r'[ğĞşŞıİçÇöÖüÜ]', msg): return "tr"
+    low = msg.lower()
+    tr_words = ["merhaba", "nasılsın", "nasilsin", "teşekkür", "tesekkur", "lütfen", "lutfen", "evet", "hayır", "hayir", "tamam", "arkadaş", "arkadas", "nasıl", "neden", "nerede", "ne yapıyorsun", "güzel", "guzel", "iyi akşamlar", "günaydın", "gunaydin"]
+    if any(w in low for w in tr_words): return "tr"
     if re.search(r'[a-zA-Z]', msg): return "en"
     return None
 def get_lang(uid): return users_db.get(str(uid), {}).get("lang", "fa")
@@ -425,8 +456,8 @@ IF image is too dark/blurry -> Ask for clearer screenshot cropped on Referral fi
 """
 
 def get_chat_prompt(lang, user_name, status, history_text, user_msg, preview_detail, topic, is_colloquial, has_history=False):
-    lang_name = {"fa": "Persian (Farsi)", "en": "English", "ru": "Russian"}.get(lang, "Persian")
-    lang_rule = f"\n- LANGUAGE LOCK - CRITICAL: User is speaking {lang_name}. You MUST reply ONLY in {lang_name}. NEVER mix languages. If user switches language, switch with them.\n"
+    lang_name = {"fa": "Persian (Farsi)", "en": "English", "ru": "Russian", "tr": "Turkish", "ar": "Arabic", "de": "German", "fr": "French", "es": "Spanish"}.get(lang, lang)
+    lang_rule = f"\n- LANGUAGE LOCK - CRITICAL: User is speaking {lang_name}. You MUST reply ONLY in {lang_name}. NEVER mix languages. If user switches language, switch with them. NO LANGUAGE LIMIT - if user speaks Turkish, reply in Turkish.\n"
     if has_history:
         greeting_rule = "\n- NO REPEATED GREETING: You ALREADY greeted user. NEVER say Salam / Hello / Privet again. NEVER say 'My name is Rahavard' again. Go DIRECTLY to answer. Use history: if user returns after a while, say briefly 'یادمه داشتیم درباره ... حرف می‌زدیم' and continue.\n"
     else:
@@ -447,7 +478,8 @@ USER INFO:
 - Registration status: {status}
 - Referral link (USE ONLY if topic is ask_group/register and user said yes): {REFERRAL_LINK}
 YOUR RULES:
-- If user asks "what is your name / who are you", say: My name is Rahavard, I can chat with text AND voice, answer questions, help with registration, guide you to join us if you want. I CAN: send you a voice message if you ask, and give you a direct search link for Kaspi / YouTube / Instagram. I CAN'T: predict future of market, add to VIP without admin, make a video of myself. SHORT, in user's language.
+- YOUR NAME - HARD RULE: Your name is EXACTLY "Rahavard". In Persian ALWAYS "رهاورد" - NEVER "رهورد". In Russian ALWAYS "Рахавард". In English/Turkish ALWAYS "Rahavard". NEVER "Rahord".
+- If user asks "what is your name / who are you", say: My name is Rahavard, I can chat with text AND voice, edit your photos, answer questions, help with registration, guide you to join us if you want. I CAN: send you a voice message if you ask, edit photos, give you a direct search link for Kaspi / YouTube / Instagram. I CAN'T: predict future of market, add to VIP without admin, edit videos, make a video of myself. SHORT, in user's language.
 - BUTTONS: If user asks to hide buttons, say "Done, I removed them ✅" and confirm. NEVER say "not in my hands". After hiding, NEVER show buttons again until user explicitly asks "show buttons / برگردون".
 - PREVIEW RULE: If user asks for preview, NEVER invent signal text. Only real TP/SL photos are sent by system.
 - LINKS: NEVER say "I can't give link" or "my access is limited". You CAN give direct search links for Kaspi, YouTube, Instagram, etc.
@@ -881,6 +913,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text("نتونستم عکس رو بسازم 😅 دوباره با یه جمله واضح‌تر بگو")
         return
+    if is_photo_edit_request(msg) and not msg.startswith("/"):
+        # اگه فقط متن ادیت فرستاد بدون عکس، بگو عکس بفرست
+        lang = get_lang(user.id)
+        if lang == "fa": txt = "باشه 😊 عکس رو با همون جمله بفرست.\nمثلاً عکس رو بفرست و توی کپشن بنویس «پس‌زمینه رو دریا کن»"
+        elif lang == "ru": txt = "Хорошо 😊 Пришли фото с этим текстом в подписи.\nНапример, пришли фото и напиши «сделай фон морем»"
+        elif lang == "tr": txt = "Tamam 😊 Fotoğrafı bu cümleyle gönder.\nÖrneğin fotoğrafı gönder ve açıklama kısmına «arka planı deniz yap» yaz"
+        else: txt = "Ok 😊 Send the photo with that text in caption.\nFor example send photo and write «make background sea»"
+        await update.message.reply_text(txt)
+        return
     if is_voice_request(msg):
         lang = get_lang(user.id)
         reply = get_chat_reply(user.id, user.first_name or "", "با ویس باهام حرف بزن، یه جمله صمیمی و کوتاه بگو")
@@ -934,13 +975,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(txt, reply_markup=get_keyboard_or_none(user.id, get_welcome_keyboard(user.id))); return
     if is_who_are_you(msg):
         lang = get_lang(user.id)
-        if lang == "ru": txt = "Меня зовут Рахавард 😊\nЯ могу болтать с тобой текстом и голосом, отвечать на вопросы, помогать с регистрацией, и если захочешь, помочь тебе присоединиться к нам.\nЯ НЕ могу: предсказывать будущее рынка и добавлять в VIP без админа.\n\nА тебя как зовут?"
-        elif lang == "en": txt = "My name is Rahavard 😊\nI can chat with you by text and voice, answer your questions, help with registration, and if you want, guide you to join us.\nI CAN'T: predict the future of the market and add you to VIP without admin.\n\nWhat's your name?"
-        else: txt = "اسمم رهاورده 😊\nمیتونم باهات با متن و ویس گپ بزنم، سوالاتت رو جواب بدم، توی ثبت نام کمکت کنم، و اگه خودت خواستی راهنماییت کنم که چجوری به جمع ما بیای.\nنمیتونم: آینده بازار رو پیش‌گویی کنم و بدون تایید ادمین ببرمت توی VIP.\n\nتو اسم چیه؟"
+        if lang == "ru": txt = "Меня зовут Рахавард 😊\nЯ могу болтать с тобой текстом и голосом, редактировать твои фото, отвечать на вопросы, помогать с регистрацией, и если захочешь, помочь тебе присоединиться к нам.\nЯ НЕ могу: предсказывать будущее рынка, добавлять в VIP без админа и редактировать видео.\n\nА тебя как зовут?"
+        elif lang == "en": txt = "My name is Rahavard 😊\nI can chat with you by text and voice, edit your photos, answer your questions, help with registration, and if you want, guide you to join us.\nI CAN'T: predict the future of the market, add you to VIP without admin and edit videos.\n\nWhat's your name?"
+        elif lang == "tr": txt = "Benim adım Rahavard 😊\nSeninle yazı ve sesle sohbet edebilirim, fotoğraflarını düzenleyebilirim, sorularını cevaplayabilirim, kayıtta yardımcı olabilirim.\nYapamam: piyasanın geleceğini tahmin etmek, admin onayı olmadan VIP'e eklemek ve video düzenlemek.\n\nSenin adın ne?"
+        else: txt = "اسمم رهاورده 😊\nمیتونم باهات با متن و ویس گپ بزنم، عکسات رو ادیت کنم، سوالاتت رو جواب بدم، توی ثبت نام کمکت کنم، و اگه خودت خواستی راهنماییت کنم که چجوری به جمع ما بیای.\nنمیتونم: آینده بازار رو پیش‌گویی کنم، بدون تایید ادمین ببرمت توی VIP و ویدیو ادیت کنم.\n\nتو اسم چیه؟"
         await update.message.reply_text(txt); return
     if is_any_link_request(msg):
         lang = get_lang(user.id)
-        lang_name = {"fa": "Persian", "en": "English", "ru": "Russian"}.get(lang, "Persian")
         platform = detect_link_platform(msg)
         history_text = get_history_text(user.id, limit=10)
         if platform == "group":
@@ -996,8 +1037,46 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo = update.message.photo[-1]
     caption = (update.message.caption or "").strip()
     if is_admin(update):
+        # ادمین اگه کپشن ادیت باشه، ادیت نمی‌خواد - میره برای سیگنال
+        if is_photo_edit_request(caption):
+            await update.message.reply_text("🎨 دارم ادیت می‌کنم... ⏳")
+            try:
+                file = await context.bot.get_file(photo.file_id); photo_bytes = await file.download_as_bytearray()
+                edited = await edit_image_bytes(photo_bytes, caption)
+                if edited:
+                    await context.bot.send_photo(chat_id=update.effective_chat.id, photo=BytesIO(edited), caption="بفرما، ادیت شد 😊")
+                else:
+                    await update.message.reply_text("نتونستم ادیت کنم 😅 دوباره با یه جمله واضح‌تر بگو")
+            except Exception as e:
+                await update.message.reply_text(f"خطا در ادیت: {e}")
+            return
         pending_items[user.id] = {"type": "photo", "photo_id": photo.file_id, "caption": caption}
         await update.message.reply_text("این چیه؟ 👇", reply_markup=get_choice_keyboard()); return
+    # ===== ادیت عکس برای کاربر =====
+    if is_photo_edit_request(caption):
+        lang = get_lang(user.id)
+        if lang == "fa": wait_txt = "🎨 دارم ادیت می‌کنم... ⏳"
+        elif lang == "ru": wait_txt = "🎨 Редактирую... ⏳"
+        elif lang == "tr": wait_txt = "🎨 Düzenliyorum... ⏳"
+        else: wait_txt = "🎨 Editing... ⏳"
+        await update.message.reply_text(wait_txt)
+        try:
+            file = await context.bot.get_file(photo.file_id); photo_bytes = await file.download_as_bytearray()
+            edited = await edit_image_bytes(photo_bytes, caption)
+            if edited:
+                if lang == "fa": cap = "بفرما، ادیت شد 😊\nاگه بازم تغییری می‌خوای، همین عکس رو با جمله جدید بفرست"
+                elif lang == "ru": cap = "Готово, отредактировано 😊\nЕсли нужно еще что-то изменить, пришли это фото с новым текстом"
+                elif lang == "tr": cap = "Buyur, düzenlendi 😊\nBaşka bir değişiklik istersen, bu fotoğrafı yeni cümleyle gönder"
+                else: cap = "Here you go, edited 😊\nIf you want more changes, send this photo again with new text"
+                await context.bot.send_photo(chat_id=update.effective_chat.id, photo=BytesIO(edited), caption=cap)
+                add_to_history(user.id, "user", f"[عکس برای ادیت فرستاد: {caption}]")
+                add_to_history(user.id, "bot", "[عکس ادیت شده فرستاده شد]")
+            else:
+                await update.message.reply_text("نتونستم ادیت کنم 😅 دوباره با یه جمله واضح‌تر بگو، مثلاً «پس‌زمینه رو دریا کن»")
+        except Exception as e:
+            print("photo edit error:", e)
+            await update.message.reply_text("نتونستم ادیت کنم 😅 یه عکس واضح‌تر بفرست یا جمله رو ساده‌تر بگو")
+        return
     topic = get_topic(user.id)
     if topic == "register" or is_register_help_request(caption) or any(k in caption for k in ["ثبت نام", "گیر کردم", "راهنماییم"]):
         await update.message.reply_text(t(user.id, "analyzing"))
@@ -1018,7 +1097,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         img_part = genai.types.Part.from_bytes(data=bytes(photo_bytes), mime_type="image/jpeg")
         history_text = get_history_text(user.id, limit=12)
         lang = get_lang(user.id)
-        lang_name = {"fa": "Persian", "en": "English", "ru": "Russian"}.get(lang, "Persian")
+        lang_name = {"fa": "Persian", "en": "English", "ru": "Russian", "tr": "Turkish"}.get(lang, "Persian")
         user_q = caption if caption else "این عکس چیه؟ نظرت چیه؟"
         prompt = f"""You are Rahavard, a friendly Telegram assistant. Style like Meta AI: warm, human, useful.
 User sent a photo. Look at it CAREFULLY.
@@ -1028,6 +1107,7 @@ User sent a photo. Look at it CAREFULLY.
 - If no caption, first say what is in photo in 1 line, then give logical, useful comment / tip.
 - If it's a chart / signal, explain it simply and practically.
 - If it's food / car / animal / selfie / place / meme, react like a human friend.
+- TIP: If user wants to edit this photo, tell them: send the same photo again with caption like "make background sea / پس‌زمینه رو دریا کن".
 CONVERSATION HISTORY:
 {history_text}
 USER CAPTION:
@@ -1127,7 +1207,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption = (update.message.caption or "").strip()
         history_text = get_history_text(user.id, limit=12)
         lang = get_lang(user.id)
-        lang_name = {"fa": "Persian", "en": "English", "ru": "Russian"}.get(lang, "Persian")
+        lang_name = {"fa": "Persian", "en": "English", "ru": "Russian", "tr": "Turkish"}.get(lang, "Persian")
         user_q = caption if caption else "این ویدیو چیه؟ نظرت چیه؟"
         prompt = f"""You are Rahavard, a friendly Telegram assistant. Style like Meta AI: warm, human, useful.
 User sent a VIDEO. Watch it CAREFULLY - both what you SEE and what you HEAR.

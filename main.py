@@ -81,8 +81,7 @@ def save_summaries():
     except: pass
 
 users_db=load_users(); banned_users=load_banned(); group_stats=load_group_stats(); pending_items={}; chat_history=load_history(); chat_summaries=load_summaries(); last_signal_pair={"pair":"?","direction":""}
-# ===== FIX عکس: حافظه عکس - بات عکس رو یادش بمونه =====
-pending_photo={}  # user_id -> {"photo_id": ..., "time": ...}
+pending_photo={}
 
 def add_to_history(user_id,role,text):
     chat_history.setdefault(int(user_id),[]).append({"role":role,"text":text})
@@ -275,6 +274,24 @@ def get_forex_news_with_ai():
         return generate_with_fallback([prompt])
     except: return None
 
+# ===== جواب ثبت‌نام به زبان خود کاربر - همیشه رفرال + رایگان =====
+def get_register_reply_in_lang(lang, status):
+    if status == "empty":
+        if lang == "ru":
+            return (f"Вижу скриншот регистрации на TheTrueTrade 👀\n\nТы ввел email, но поле «Реферальный код» пустое.\n\n⚠️ Если хочешь присоединиться к нам, ты должен зарегистрироваться именно по моей реферальной ссылке. Иначе система тебя не увидит и я не смогу добавить тебя в группу.\n\n✅ И помни: все наши услуги абсолютно бесплатные.\n\nНажми на мою ссылку и зарегистрируйся заново:\n{REFERRAL_LINK}\n\nТы застрял на поле с кодом или уже зарегистрировался?")
+        if lang == "en":
+            return (f"I see your TheTrueTrade registration screenshot 👀\n\nYou entered your email, but the Referral Code field is EMPTY.\n\n⚠️ If you want to join us, you MUST register with my referral link. Otherwise the system won't see you and I can't add you to the group.\n\n✅ And remember: all our services are completely FREE.\n\nClick my link and register again:\n{REFERRAL_LINK}\n\nAre you stuck on the referral code field or already registered?")
+        return (f"عکست رو دیدم 👀 این صفحه ثبت‌نام TheTrueTrade هست.\n\nایمیلت رو وارد کردی ولی فیلد «کد معرف» خالیه.\n\n⚠️ اگه می‌خوای به جمع ما اضافه بشی، باید حتما با لینک رفرال من عضو بشی. وگرنه سیستم تو رو نمی‌بینه و نمی‌تونم به گروه اضافه‌ت کنم.\n\n✅ و در نظر داشته باش: تمام خدمات ما کاملا رایگان هستش.\n\nبا همین لینک من دوباره ثبت نام کن:\n{REFERRAL_LINK}\n\nتوی بخش کد معرف گیر کردی یا ثبت‌نامت انجام شده؟")
+    if status == "correct":
+        if lang == "ru": return "Отлично, код 37681671 введен правильно ✅\n\nТеперь нажми «Создать аккаунт», потом вернись сюда и нажми «Я зарегистрировался», чтобы я подтвердил тебя.\n\n✅ Все наши услуги бесплатные, и вход в группу только по реферальной ссылке."
+        if lang == "en": return "Great, code 37681671 is correct ✅\n\nNow click «Create Account», then come back here and press «I Registered» so I can confirm you.\n\n✅ All our services are FREE, and joining the group is only via referral link."
+        return "آفرین، کد معرف 37681671 رو درست زدی ✅\n\nحالا دکمه «ایجاد حساب» رو بزن و بعدش برگرد اینجا بزن «ثبت نام کردم» تا تاییدت کنم.\n\n✅ تمام خدمات ما رایگان هستش و فرصت ورود به گروه ما فقط از طریق لینک رفرال هستش."
+    if status == "wrong":
+        if lang == "ru": return f"Этот код неправильный, должен быть 37681671. Вернись и зарегистрируйся по моей ссылке:\n{REFERRAL_LINK}\n\n✅ Все услуги бесплатные."
+        if lang == "en": return f"This code is wrong, it must be 37681671. Go back and register with my link:\n{REFERRAL_LINK}\n\n✅ All services are FREE."
+        return f"این کد اشتباهه، باید 37681671 باشه. برگرد با لینک رفرال من ثبت نام کن:\n{REFERRAL_LINK}\n\n✅ تمام خدمات ما رایگان هستش."
+    return None
+
 EXCHANGE_INFO={"fa":"صرافی The True Trade یه صرافی غیرمتمرکز (DEX) برای معاملات فیوچرز دائمی کریپتوئه، روی شبکه BNB Chain.\n\nخوبی‌هاش:\n✅ بدون احراز هویت (KYC)\n✅ پولت دست خودته\n✅ بیش از ۵۰ ارز، تا اهرم 1001x\n✅ کارمزد ثابت و پایین، بدون کارمزد فاندینگ\n✅ حالت دمو داره\n\nو اگه با کد 37681671 ثبت نام کنی، هم وارد گروه VIP ما میشی، هم کارمزد کمتری میدی.","en":"The True Trade is a decentralized exchange (DEX) for crypto perpetual futures, on BNB Chain.\n\n✅ No KYC\n✅ Non-custodial\n✅ 50+ coins, up to 1001x leverage\n✅ Flat low fee, no funding fees\n✅ Demo mode\n\nIf you register with code 37681671, you join our VIP group AND pay less fee.","ru":"The True Trade — децентрализованная биржа (DEX) для бессрочных фьючерсов, на сети BNB Chain.\n\n✅ Без KYC\n✅ Некастодиальная\n✅ 50+ монет, плечо до 1001x\n✅ Фиксированная низкая комиссия, без фандинга\n✅ Демо-режим\n\nЕсли зарегистрируешься с кодом 37681671, попадешь в VIP-группу И будешь платить меньше комиссии."}
 def is_exchange_question(msg):
     m=msg.lower(); return any(k in m for k in ["این چه صرافیه","این صرافی چیه","صرافی چیه","truetrade چیه","true trade چیه","the true trade چیه","what is this exchange","what is truetrade","what is true trade","что это за биржа","что такое truetrade","что такое the true trade"])
@@ -344,7 +361,7 @@ def detect_intent_now(msg, has_photo=False):
             return "edit_photo"
         if "ثبت" in m or "کد معرف" in m:
             return "register_photo"
-        return "photo_ask"
+        return "photo_smart"
     if any(k in m for k in ["ترجمه کن","ترجمش کن","به انگلیسی بگو","به روسی بگو","به فارسی بگو","به ترکی بگو","به عربی بگو","translate","переведи","بهش بگو","او گفت","اون گفت","مترجم","translator"]):
         if any(k in m for k in ["خاموش","بسه","تموم","برگرد","خروج"]):
             return "chat"
@@ -757,8 +774,6 @@ async def handle_text(update:Update,context:ContextTypes.DEFAULT_TYPE):
             pending_items[user.id]={"type":"text","text":msg}
             await update.message.reply_text("این چیه؟ 👇",reply_markup=get_choice_keyboard()); return
         await update.message.reply_text("سیگنالت رو بفرست تا بفرستم توی گروه ✅"); return
-
-    # ===== FIX عکس: اگه عکس قبلی داریم و الان گفت ترجمه / ادیت =====
     if user.id in pending_photo:
         m=msg.lower().strip()
         if m in ["ترجمه","ترجمه کن","ترجمش کن","translate","переведи","ترجمه کن لطفا","ترجمه کن برام","ترجمه کن اینو"]:
@@ -787,7 +802,6 @@ async def handle_text(update:Update,context:ContextTypes.DEFAULT_TYPE):
             age=(datetime.datetime.now()-pending_photo[user.id]["time"]).total_seconds()
             if age>300: del pending_photo[user.id]
         except: pass
-
     intent=detect_intent_now(msg, has_photo=False)
     if intent=="forex_news":
         await update.message.reply_text("⏳ دارم اخبار امروز فارکس فکتوری رو چک می‌کنم...")
@@ -854,6 +868,7 @@ async def handle_text(update:Update,context:ContextTypes.DEFAULT_TYPE):
     reply=get_chat_reply(user.id,user.first_name,msg)
     if reply: await update.message.reply_text(reply)
 
+# ===== handle_photo هوشمند - خودش تحلیل می‌کنه، نمی‌پرسه =====
 async def handle_photo(update:Update,context:ContextTypes.DEFAULT_TYPE):
     user=update.effective_user; msg=update.message.caption or ""
     if is_banned(user.id): await update.message.reply_text(TEXTS["fa"]["banned_msg"]); return
@@ -861,36 +876,91 @@ async def handle_photo(update:Update,context:ContextTypes.DEFAULT_TYPE):
     if is_admin(update):
         pending_items[user.id]={"type":"photo","photo_id":photo_id,"caption":msg}
         await update.message.reply_text("این چیه؟ 👇",reply_markup=get_choice_keyboard()); return
-    intent=detect_intent_now(msg, has_photo=True)
-    if intent=="translate_photo":
-        await update.message.reply_text("⏳ دارم عکس رو می‌خونم و ترجمه می‌کنم...")
+
+    user_lang=get_lang(user.id)
+    # اگه کپشن واضح داره، همون رو انجام بده
+    if msg.strip():
+        intent=detect_intent_now(msg, has_photo=True)
+        if intent=="translate_photo":
+            await update.message.reply_text("⏳ دارم عکس رو می‌خونم و ترجمه می‌کنم...")
+            try:
+                file=await context.bot.get_file(photo_id); photo_bytes=await file.download_as_bytearray()
+                img_part=genai.types.Part.from_bytes(data=bytes(photo_bytes),mime_type="image/jpeg")
+                target=detect_target_lang_from_translate_msg(msg) or users_db.get(str(user.id),{}).get("translate_target","en")
+                target_name={"en":"English","ru":"Russian","fa":"Persian","tr":"Turkish"}.get(target,"English")
+                translated=generate_with_fallback([f"Read all text in this screenshot and translate it to {target_name}. Output ONLY translation.",img_part])
+                await update.message.reply_text(f"🌐 ترجمه عکس ({target_name}):\n{translated.strip()}"); return
+            except: await update.message.reply_text("نتونستم عکس رو بخونم 😅 یه عکس واضح‌تر بفرست."); return
+        if intent=="edit_photo":
+            await update.message.reply_text("⏳ دارم ادیت می‌کنم...")
+            try:
+                file=await context.bot.get_file(photo_id); photo_bytes=await file.download_as_bytearray()
+                out=await edit_image_bytes(photo_bytes,msg)
+                if out: await context.bot.send_photo(chat_id=update.effective_chat.id,photo=BytesIO(out),caption="بفرما 😊")
+                else: await update.message.reply_text("نتونستم ادیت کنم، عکس رو دوباره با همون جمله بفرست")
+            except: await update.message.reply_text("نتونستم ادیت کنم، عکس رو دوباره با همون جمله بفرست")
+            return
+        if intent=="register_photo":
+            pending_photo[user.id]={"photo_id":photo_id,"time":datetime.datetime.now()}
+            await update.message.reply_text("⏳ دارم عکس ثبت‌نام رو چک می‌کنم...")
+            try:
+                file=await context.bot.get_file(photo_id); photo_bytes=await file.download_as_bytearray()
+                img_part=genai.types.Part.from_bytes(data=bytes(photo_bytes),mime_type="image/jpeg")
+                classify=generate_with_fallback(["Analyze this registration screenshot. Output ONLY JSON: {\"has_referral_empty\": true/false, \"has_referral_correct\": true/false, \"has_referral_wrong\": true/false}. has_referral_correct=true ONLY if you literally see 37681671 typed.",img_part])
+                try:
+                    js=classify[classify.find("{"):classify.rfind("}")+1]; info=json.loads(js)
+                except: info={}
+                if info.get("has_referral_correct"): await update.message.reply_text(get_register_reply_in_lang(user_lang,"correct"))
+                elif info.get("has_referral_wrong"): await update.message.reply_text(get_register_reply_in_lang(user_lang,"wrong"))
+                else: await update.message.reply_text(get_register_reply_in_lang(user_lang,"empty"))
+                return
+            except: await update.message.reply_text(get_register_reply_in_lang(user_lang,"empty")); return
+
+    # ===== حالت هوشمند: کپشن نداره -> خودش تحلیل کنه =====
+    await update.message.reply_text("⏳ دارم عکس رو تحلیل می‌کنم...")
+    try:
+        file=await context.bot.get_file(photo_id); photo_bytes=await file.download_as_bytearray()
+        img_part=genai.types.Part.from_bytes(data=bytes(photo_bytes),mime_type="image/jpeg")
+        classify=generate_with_fallback(["Analyze this image. Output ONLY JSON like this: {\"type\": \"register|chart|text|other\", \"text_lang\": \"fa|ru|en|tr|other|none\", \"has_referral_empty\": true/false, \"has_referral_correct\": true/false, \"has_referral_wrong\": true/false, \"text_summary\": \"short summary in English\"} Rules: type=register if it's a registration/signup page with email/referral field. type=chart if it's trading chart. type=text if it's a screenshot with text. has_referral_empty=true if referral field is EMPTY or only placeholder. has_referral_correct=true ONLY if you literally see 37681671 typed. Do NOT guess.",img_part])
+        print("PHOTO CLASSIFY:", classify)
         try:
-            file=await context.bot.get_file(photo_id); photo_bytes=await file.download_as_bytearray()
-            img_part=genai.types.Part.from_bytes(data=bytes(photo_bytes),mime_type="image/jpeg")
-            target=detect_target_lang_from_translate_msg(msg) or users_db.get(str(user.id),{}).get("translate_target","en")
-            target_name={"en":"English","ru":"Russian","fa":"Persian","tr":"Turkish"}.get(target,"English")
-            translated=generate_with_fallback([f"Read all text in this screenshot and translate it to {target_name}. Output ONLY translation.",img_part])
-            await update.message.reply_text(f"🌐 ترجمه عکس ({target_name}):\n{translated.strip()}"); return
-        except: await update.message.reply_text("نتونستم عکس رو بخونم 😅 یه عکس واضح‌تر بفرست."); return
-    if intent=="edit_photo":
-        await update.message.reply_text("⏳ دارم ادیت می‌کنم...")
-        try:
-            file=await context.bot.get_file(photo_id); photo_bytes=await file.download_as_bytearray()
-            out=await edit_image_bytes(photo_bytes,msg)
-            if out: await context.bot.send_photo(chat_id=update.effective_chat.id,photo=BytesIO(out),caption="بفرما 😊")
-            else: await update.message.reply_text("نتونستم ادیت کنم، عکس رو دوباره با همون جمله بفرست")
-        except: await update.message.reply_text("نتونستم ادیت کنم، عکس رو دوباره با همون جمله بفرست")
-        return
-    if intent=="register_photo":
-        try:
-            file=await context.bot.get_file(photo_id); photo_bytes=await file.download_as_bytearray()
-            img_part=genai.types.Part.from_bytes(data=bytes(photo_bytes),mime_type="image/jpeg")
-            raw=generate_with_fallback([PROMPT_REGISTER_SCREEN,img_part])
-            await update.message.reply_text(raw); return
-        except: await update.message.reply_text("عکست رو دیدم، یه عکس واضح‌تر از بخش کد معرف بفرست."); return
-    if intent=="photo_ask":
+            info=json.loads(classify[classify.find("{"):classify.rfind("}")+1])
+        except: info={"type":"other","text_lang":"other"}
+        photo_type=info.get("type","other"); text_lang=info.get("text_lang","other")
+
+        if photo_type=="register":
+            pending_photo[user.id]={"photo_id":photo_id,"time":datetime.datetime.now()}
+            if info.get("has_referral_correct"): await update.message.reply_text(get_register_reply_in_lang(user_lang,"correct")); return
+            if info.get("has_referral_wrong"): await update.message.reply_text(get_register_reply_in_lang(user_lang,"wrong")); return
+            await update.message.reply_text(get_register_reply_in_lang(user_lang,"empty")); return
+
+        if photo_type=="chart":
+            pending_photo[user.id]={"photo_id":photo_id,"time":datetime.datetime.now()}
+            analysis=generate_with_fallback([f"Analyze this trading chart. Explain in {'Russian' if user_lang=='ru' else 'English' if user_lang=='en' else 'Persian'}: pair, direction LONG/SHORT, entry, TPs, SL. Be short and clear.",img_part])
+            await update.message.reply_text(f"📊 تحلیل چارت:\n{analysis.strip()}"); return
+
+        if photo_type=="text":
+            pending_photo[user.id]={"photo_id":photo_id,"time":datetime.datetime.now()}
+            if text_lang!=user_lang and text_lang!="none":
+                target_name={"fa":"Persian","ru":"Russian","en":"English","tr":"Turkish"}.get(user_lang,"Persian")
+                translated=generate_with_fallback([f"Read all text in this image and translate it to {target_name}. Output ONLY translation.",img_part])
+                if user_lang=="ru": await update.message.reply_text(f"Вижу скриншот на другом языке, перевел для тебя 👇\n\n🌐 Перевод:\n{translated.strip()}")
+                elif user_lang=="en": await update.message.reply_text(f"I see a screenshot in another language, translated for you 👇\n\n🌐 Translation:\n{translated.strip()}")
+                else: await update.message.reply_text(f"دیدم اسکرین‌شات به زبان دیگه‌ست، برات ترجمه کردم 👇\n\n🌐 ترجمه:\n{translated.strip()}")
+                return
+            else:
+                summary=generate_with_fallback([f"Summarize what is in this image in {'Russian' if user_lang=='ru' else 'English' if user_lang=='en' else 'Persian'}, short, 3-4 lines.",img_part])
+                await update.message.reply_text(f"👀 عکست رو دیدم:\n{summary.strip()}"); return
+
         pending_photo[user.id]={"photo_id":photo_id,"time":datetime.datetime.now()}
-        await update.message.reply_text("عکست رسید 😊 بگو باهاش چی کار کنم؟ ترجمه کنم؟ ادیت کنم؟ یا در مورد ثبت‌نامته؟")
+        if user_lang=="ru": await update.message.reply_text("Фото получил 😊 Скажи, что с ним сделать? Перевести? Отредактировать? Или это про регистрацию?")
+        elif user_lang=="en": await update.message.reply_text("Got your photo 😊 Tell me what to do with it? Translate? Edit? Or is it about registration?")
+        else: await update.message.reply_text("عکست رسید 😊 بگو باهاش چی کار کنم؟ ترجمه کنم؟ ادیت کنم؟ یا در مورد ثبت‌نامته?")
+        return
+    except Exception as e:
+        print("smart photo error:",e)
+        pending_photo[user.id]={"photo_id":photo_id,"time":datetime.datetime.now()}
+        await update.message.reply_text("عکست رسید، ولی نتونستم خوب تحلیلش کنم 😅 بگو باهاش چی کار کنم؟ ترجمه کنم؟ ادیت کنم؟")
         return
 
 async def handle_voice(update:Update,context:ContextTypes.DEFAULT_TYPE):
@@ -926,7 +996,6 @@ async def handle_voice(update:Update,context:ContextTypes.DEFAULT_TYPE):
                 ok=await send_voice_reply(context,update.effective_chat.id,r,lang=get_lang(user.id))
                 if not ok: await update.message.reply_text(f"🎤 شنیدم گفتی: {user_text}\n\n{r}")
                 return
-        # اگه عکس قبلی داریم و ویس گفت "ترجمه کن"
         if user.id in pending_photo and user_text.lower().strip() in ["ترجمه","ترجمه کن","translate"]:
             photo_id=pending_photo[user.id]["photo_id"]; del pending_photo[user.id]
             try:
@@ -983,7 +1052,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,handle_text))
     app.add_handler(ChatJoinRequestHandler(on_chat_join_request))
     app.add_handler(ChatMemberHandler(on_chat_member,ChatMemberHandler.CHAT_MEMBER))
-    print("Rahavard is running... ✅ STATELESS + PENDING PHOTO - photo remembered")
+    print("Rahavard is running... ✅ SMART PHOTO - auto analyze, auto translate, lang-aware register")
     app.run_polling(drop_pending_updates=True)
 
 if __name__=="__main__":

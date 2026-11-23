@@ -210,15 +210,36 @@ def detect_link_platform(msg):
     if any(k in m for k in ["گروه","group","групп"]): return "group"
     if any(k in m for k in ["ثبت نام","ثبت‌نام","register","регистрац"]): return "register"
     return "general"
-def build_direct_links(query,platform):
-    q=query.strip() if query.strip() else "laptop"
-    if platform=="youtube": return [f"https://www.youtube.com/results?search_query={quote(q)}"]
-    if platform=="instagram": return [f"https://www.instagram.com/explore/search/keyword/?q={quote(q)}"]
-    if platform=="tiktok": return [f"https://www.tiktok.com/search?q={quote(q)}"]
-    if platform=="telegram": return [f"https://t.me/s/{quote(q)}"]
-    if platform=="music": return [f"https://open.spotify.com/search/{quote(q)}",f"https://www.youtube.com/results?search_query={quote(q)}"]
-    if platform=="shopping": return [f"https://kaspi.kz/shop/search/?text={quote(q)}",f"https://www.sulpak.kz/search/{quote(q)}",f"https://www.technodom.kz/search?query={quote(q)}"]
-    return [f"https://www.google.com/search?q={quote(q)}"]
+def build_direct_links(query, platform, user_lang="fa"):
+    q=query.strip() if query.strip() else "laptop"; q_enc=quote(q)
+    if platform=="youtube": return [f"https://www.youtube.com/results?search_query={q_enc}"]
+    if platform=="instagram": return [f"https://www.instagram.com/explore/search/keyword/?q={q_enc}"]
+    if platform=="tiktok": return [f"https://www.tiktok.com/search?q={q_enc}"]
+    if platform=="telegram": return [f"https://t.me/s/{q_enc}"]
+    if platform=="music": return [f"https://open.spotify.com/search/{q_enc}", f"https://www.youtube.com/results?search_query={q_enc}"]
+    if platform=="shopping":
+        links=[]
+        links.append(f"https://www.amazon.com/s?k={q_enc}")
+        links.append(f"https://www.ebay.com/sch/i.html?_nkw={q_enc}")
+        links.append(f"https://www.aliexpress.com/wholesale?SearchText={q_enc}")
+        if user_lang=="fa":
+            links.append(f"https://www.digikala.com/search/?q={q_enc}")
+            links.append(f"https://www.torob.com/search/?query={q_enc}")
+            links.append(f"https://emalls.ir/search?q={q_enc}")
+        if user_lang in ["ru","kk"]:
+            links.append(f"https://www.ozon.ru/search/?text={q_enc}")
+            links.append(f"https://www.wildberries.ru/catalog/0/search.aspx?search={q_enc}")
+            links.append(f"https://kaspi.kz/shop/search/?text={q_enc}")
+            links.append(f"https://www.sulpak.kz/search/{q_enc}")
+        if user_lang=="tr":
+            links.append(f"https://www.trendyol.com/sr?q={q_enc}")
+            links.append(f"https://www.hepsiburada.com/ara?q={q_enc}")
+        links.append(f"https://s.taobao.com/search?q={q_enc}")
+        if user_lang not in ["fa","ru","kk","tr"]:
+            links.append(f"https://www.digikala.com/search/?q={q_enc}")
+            links.append(f"https://www.ozon.ru/search/?text={q_enc}")
+        return links
+    return [f"https://www.google.com/search?q={q_enc}"]
 EXCHANGE_INFO={"fa":"صرافی The True Trade یه صرافی غیرمتمرکز (DEX) برای معاملات فیوچرز دائمی کریپتوئه، روی شبکه BNB Chain.\n\nخوبی‌هاش:\n✅ بدون احراز هویت (KYC)\n✅ پولت دست خودته\n✅ بیش از ۵۰ ارز، تا اهرم 1001x\n✅ کارمزد ثابت و پایین، بدون کارمزد فاندینگ\n✅ حالت دمو داره\n\nو اگه با کد 37681671 ثبت نام کنی، هم وارد گروه VIP ما میشی، هم کارمزد کمتری میدی.","en":"The True Trade is a decentralized exchange (DEX) for crypto perpetual futures, on BNB Chain.\n\n✅ No KYC\n✅ Non-custodial\n✅ 50+ coins, up to 1001x leverage\n✅ Flat low fee, no funding fees\n✅ Demo mode\n\nIf you register with code 37681671, you join our VIP group AND pay less fee.","ru":"The True Trade — децентрализованная биржа (DEX) для бессрочных фьючерсов, на сети BNB Chain.\n\n✅ Без KYC\n✅ Некастодиальная\n✅ 50+ монет, плечо до 1001x\n✅ Фиксированная низкая комиссия, без фандинга\n✅ Демо-режим\n\nЕсли зарегистрируешься с кодом 37681671, попадешь в VIP-группу И будешь платить меньше комиссии."}
 def is_exchange_question(msg):
     m=msg.lower(); return any(k in m for k in ["این چه صرافیه","این صرافی چیه","صرافی چیه","truetrade چیه","true trade چیه","the true trade چیه","what is this exchange","what is truetrade","what is true trade","что это за биржа","что такое truetrade","что такое the true trade"])
@@ -274,7 +295,7 @@ def detect_topic(msg):
     if any(k in m for k in ["ترید نمیخوام","از ترید نمیخوام","ترید رو بذار کنار","نمیخوام از ترید بگم","من از ترید نمیخوام","نمیخوام ترید","не хочу про трейдинг","don't want trading"]): return "no_trade"
     if any(k in m for k in ["انگلیسی یادم بده","انگلیسی یاد بده","انگلیسی بهم یاد بده","teach me english","learn english","can you teach me english","учить английский","научи меня английскому"]): return "english_general"
     if any(k in m for k in ["بیا حرف بزنیم","گپ بزنیم","حرف بزنیم","حوصلم سر رفته","давай поговорим","поболтаем","мне скучно","lets talk","just talk"]): return "casual"
-    if any(k in m for k in ["چجوری پول دربیارم","چطوری پول دربیارم","درآمد دومی میخوام","کارتون چیه","کارت چیه","این گروه چیه","گروهتون چیه","چجوری عضو شم","توضیح بده","چجوری؟","چطوری؟","سیگنال چیه","how to earn","how to join","what is this group","что это за группа","как заработать","как вступить"]): return "ask_group"
+    if any(k in m for k in ["کانال رایگان","کانال سیگنال","گروه سیگنال","گروه رایگان","سیگنال رایگان","کانال تلگرام","کانال تلگرامی","گروه تلگرام","گروه تلگرامی","سراغ داری","کانال سراغ","گروه سراغ","ترجیحا یه گروه","یه گروه سیگنال","یه گروه باشه","گروه باشه بهتره","سیگنال میخوام","سیگنال می‌خوام","سیگنال بده","سیگنال میدی","کجا سیگنال بگیرم","از کجا سیگنال","سیگنال از کجا","معرفی کن","معرفیت کن","معرفی می‌کنی","free signal","free channel","signal group","signal channel","бесплатный сигнал","бесплатный канал","группа сигналов","канал сигналов","چجوری پول دربیارم","چطوری پول دربیارم","درآمد دومی میخوام","کارتون چیه","کارت چیه","این گروه چیه","گروهتون چیه","چجوری عضو شم","توضیح بده","چجوری؟","چطوری؟","سیگنال چیه","how to earn","how to join","what is this group","что это за группа","как заработать","как вступить"]): return "free_signal_talk"
     if any(k in m for k in ["ثبت نام","register","регистрация"]): return "register"
     if any(k in m for k in ["سیگنال","ترید","بازار","لوریج","signal","trade"]): return "trade"
     return None
@@ -334,6 +355,8 @@ def get_chat_prompt(lang,user_name,status,history_text,user_msg,preview_detail,t
     greeting_rule="NO REPEATED GREETING: NEVER say Salam / Hello / Privet again. NEVER say My name is Rahavard again. Go DIRECTLY to answer.\n" if has_history else "This is first message. You can greet once, short."
     if topic in ["onboarding","casual","no_trade","english_general"]:
         topic_rule=f"CURRENT TOPIC: {topic} - ONBOARDING / CASUAL MODE\nABSOLUTE BAN: Do NOT mention trading, signal, VIP, TrueTrade, referral link, crypto, leverage, TP/SL, joining group, registration - AT ALL. No link, no button.\nYOUR JOB: Get to know user step by step, ONE question at a time.\nSTEP 1 - If you don't know how user found you, ask ONLY: 'بگو ببینم، تو از کجا پیدام کردی؟ یکی معرفی کرده اومدی یا خودت پیدام کردی؟'\nSTEP 2 - If user answered how they found you, but you DON'T know their job, ask ONLY: 'راستی تو به چه کاری مشغولی؟ شغلت چیه؟ درس می‌خونی یا کار می‌کنی؟'\nSTEP 3 - If you know their job, but NOT asked about second income, ask ONLY: 'تا حالا به شغل دوم و درآمد بیشتر توی زندگیت فکر کردی؟ مثلاً کنار کارت یه درآمد دومی هم داشته باشی؟'\nSTEP 4 - ONLY if user says 'آره / چجوری؟ / توضیح بده / how to earn / how to join / گروهتون چیه' - THEN say: 'دوست داری بگم چجوری می‌تونی به جمع ما اضافه بشی؟' and wait for yes. Do NOT send link yet.\nIf user says 'I don't want trading' -> topic no_trade, NEVER ask about second income again.\nIf user says 'teach me English' -> teach GENERAL English, never trading English.\n"
+    elif topic=="free_signal_talk":
+        topic_rule="CURRENT TOPIC: free_signal_talk - USER TALKED ABOUT FREE SIGNAL CHANNEL / GROUP - THIS IS YOUR CHANCE, DO NOT WASTE IT\nNEVER say 'به هیچ گروهی نرو / 99% گروه‌ها کلاهبردارن / خودت یاد بگیر بهتره' as your final answer. You can warn, but you MUST end with an invitation to OUR group.\nYOUR FLOW - DO IT IN THIS ORDER, IN ONE MESSAGE:\n1) FIRST - Say you know: 'سراغ دارم، آره'\n2) SECOND - Talk about free signal channels, like a friend with memories, NOT like a lecture. Say something like:\n- 'راستش کانال‌های رایگان رو خیلی دیدم. اولش همه‌شون خوبن، ۲-۳ تا سیگنال درست میدن که اعتماد کنی'\n- 'بعدش یه دفعه یه سیگنال اشتباه با اهرم بالا میدن، یا سیگنال رو دیر می‌فرستن، تو که وارد میشی بازار برگشته'\n- 'خاطره‌اش اینه که خیلی‌ها رو دیدم که توی همون کانال‌های رایگان، چون حد ضرر نداشتن یا کسی نبود جوابشون رو بده، کل سرمایه‌شون رفت'\n- 'مشکل کانال رایگان اینه که نه مسئولی داره، نه کسی جوابتو میده، نه آموزش میده که چرا این سیگنال رو داده'\n- Keep it 5-6 lines, warm, story-like, NOT scary, NOT 'don't go'.\n3) THIRD - Pivot to OUR group, naturally: 'برای همین ما یه گروه داریم که فرقش اینه: سیگنال‌هاش با حد ضرر مشخصه، اگه سوالی داشتی جواب میدیم، و اولش هم بهت یاد میدیم چرا این سیگنال رو دادیم'\n4) FOURTH - End with EXACTLY this question, and WAIT for answer, do NOT send link yet:\nFA: 'حالا دوست داری به گروه سیگنال ما معرفیت کنم؟'\nEN: 'Now, do you want me to introduce you to our signal group?'\nRU: 'А хочешь, я познакомлю тебя с нашей сигнальной группой?'\nTR: 'Şimdi seni bizim sinyal grubumuzla tanıştırayım mı?'\nIf user says 'آره / بگو / معرفی کن / yes' AFTER this, THEN you can send referral link + steps.\nIf user says 'نه / نمی‌خوام' -> respect it, go back to casual chat, do NOT push.\n"
     elif topic=="translator": topic_rule="USER IS IN TRANSLATOR MODE. You are a translator between two people. Translate exactly what user says, keep tone, output ONLY translation + original for copy. Do NOT add trading/group talk.\n"
     elif topic=="ask_group": topic_rule="USER ASKED ABOUT GROUP HIMSELF - NOW you are ALLOWED to introduce group. Say: group of people who beside their main job make daily profit from crypto markets. Ask: 'Do you want me to tell you how you can join?' Do NOT send referral link yet. Only if user says yes then send link + steps.\n"
     elif topic=="register": topic_rule=f"USER IS IN REGISTRATION FLOW. Referral link: {REFERRAL_LINK}. Steps: 1) Register with link 2) Come back and press 'I Registered' 3) Admin checks. If user is stuck, ask for screenshot.\n"
@@ -355,6 +378,7 @@ def get_chat_reply(user_id,user_name,user_msg):
         else: set_topic(user_id,new_topic); topic=new_topic
     else: topic=last_topic
     preview_detail="" if topic in ["onboarding","casual","no_trade","english_general","translator"] else (get_preview_text(lang,detailed=False) or "")
+    if topic=="free_signal_talk": preview_detail=""
     prompt=get_chat_prompt(lang,user_name,status,history_text,user_msg,preview_detail,topic,is_colloquial_msg(user_msg),has_history=has_history)
     try:
         reply=generate_with_fallback([prompt]).strip(); reply=clean_all_replies(reply,is_first_message=is_first); add_to_history(user_id,"user",user_msg); add_to_history(user_id,"bot",reply); return reply
@@ -676,19 +700,33 @@ async def handle_text(update:Update,context:ContextTypes.DEFAULT_TYPE):
             if "لپ" in hist or "laptop" in hist: q="لپ تاپ گیمینگ"
             elif "گوشی" in hist or "phone" in hist: q="گوشی"
             else: q="لپ تاپ"
-        links=build_direct_links(q,platform)
+        links=build_direct_links(q, platform, user_lang=get_lang(user.id))
         if lang=="fa":
-            txt="بفرما، لینک مستقیم 👇\n\n"
-            for L in links: txt+=f"🔗 {L}\n"
-            txt+="\nروش بزن، قیمت روز و فروشنده‌ها رو می‌بینی. بودجت رو بگو تا دقیق‌تر بگم کدوم مدل بگیر."
+            txt="بفرما، لینک مستقیم خرید از کل دنیا 👇\n\n"
+            for L in links:
+                if "digikala" in L: txt+=f"🇮🇷 دیجی‌کالا: {L}\n"
+                elif "torob" in L: txt+=f"🇮🇷 ترب: {L}\n"
+                elif "emalls" in L: txt+=f"🇮🇷 ایمالز: {L}\n"
+                elif "ozon" in L: txt+=f"🇷🇺 Ozon: {L}\n"
+                elif "wildberries" in L: txt+=f"🇷🇺 Wildberries: {L}\n"
+                elif "kaspi" in L: txt+=f"🇰🇿 Kaspi: {L}\n"
+                elif "sulpak" in L: txt+=f"🇰🇿 Sulpak: {L}\n"
+                elif "trendyol" in L: txt+=f"🇹🇷 Trendyol: {L}\n"
+                elif "hepsiburada" in L: txt+=f"🇹🇷 Hepsiburada: {L}\n"
+                elif "taobao" in L: txt+=f"🇨🇳 Taobao: {L}\n"
+                elif "amazon" in L: txt+=f"🌍 Amazon: {L}\n"
+                elif "ebay" in L: txt+=f"🌍 eBay: {L}\n"
+                elif "aliexpress" in L: txt+=f"🌍 AliExpress: {L}\n"
+                else: txt+=f"🔗 {L}\n"
+            txt+="\nروشون بزن، قیمت روز و فروشنده‌ها رو می‌بینی. بودجت و کشورت رو بگو تا دقیق‌تر بگم از کدوم سایت بگیری ارزون‌تره."
         elif lang=="ru":
-            txt="Вот прямая ссылка 👇\n\n"
+            txt="Вот прямые ссылки на покупку со всего мира 👇\n\n"
             for L in links: txt+=f"🔗 {L}\n"
-            txt+="\nНажми, увидишь цену и продавцов. Скажи бюджет, подскажу точную модель."
+            txt+="\nНажми, увидишь цену и продавцов. Скажи бюджет и страну, подскажу где дешевле."
         else:
-            txt="Here is direct link 👇\n\n"
+            txt="Here are direct buy links from all over the world 👇\n\n"
             for L in links: txt+=f"🔗 {L}\n"
-            txt+="\nClick to see price and sellers. Tell me your budget and I'll pick exact model."
+            txt+="\nClick to see price and sellers. Tell me your budget and country and I'll tell you where it's cheapest."
         add_to_history(user.id,"user",msg); add_to_history(user.id,"bot",txt); await update.message.reply_text(txt); return
     await context.bot.send_chat_action(chat_id=update.effective_chat.id,action="typing"); reply=get_chat_reply(user.id,user.first_name or "",msg)
     if reply:
@@ -777,19 +815,19 @@ async def handle_voice(update:Update,context:ContextTypes.DEFAULT_TYPE):
                 if "لپ" in hist or "laptop" in hist: q="لپ تاپ گیمینگ"
                 elif "گوشی" in hist or "phone" in hist: q="گوشی"
                 else: q="لپ تاپ"
-            links=build_direct_links(q,platform)
+            links=build_direct_links(q, platform, user_lang=get_lang(user.id))
             if lang=="fa":
-                txt="بفرما، لینک مستقیم خرید 👇\n\n"
+                txt="بفرما، لینک مستقیم خرید از کل دنیا 👇\n\n"
                 for L in links: txt+=f"🔗 {L}\n"
-                txt+="\nروش بزن، قیمت روز و فروشنده‌ها رو می‌بینی. بودجت رو بگو تا دقیق‌تر بگم کدوم مدل بگیر."
+                txt+="\nروشون بزن، قیمت روز و فروشنده‌ها رو می‌بینی. بودجت و کشورت رو بگو تا دقیق‌تر بگم از کدوم سایت بگیری ارزون‌تره."
             elif lang=="ru":
-                txt="Вот прямая ссылка на покупку 👇\n\n"
+                txt="Вот прямые ссылки на покупку со всего мира 👇\n\n"
                 for L in links: txt+=f"🔗 {L}\n"
-                txt+="\nНажми, увидишь цену и продавцов. Скажи бюджет, подскажу точную модель."
+                txt+="\nНажми, увидишь цену и продавцов. Скажи бюджет и страну, подскажу где дешевле."
             else:
-                txt="Here is direct buy link 👇\n\n"
+                txt="Here are direct buy links from all over the world 👇\n\n"
                 for L in links: txt+=f"🔗 {L}\n"
-                txt+="\nClick to see price and sellers. Tell me your budget and I'll pick exact model."
+                txt+="\nClick to see price and sellers. Tell me your budget and country and I'll tell you where it's cheapest."
             ok=await send_voice_reply(context,update.effective_chat.id,txt,lang); await update.message.reply_text(f"🎤 شنیدم گفتی: {transcribed}\n\n{txt}"); add_to_history(user.id,"user",transcribed); add_to_history(user.id,"bot",txt); return
         await context.bot.send_chat_action(chat_id=update.effective_chat.id,action="typing"); reply=get_chat_reply(user.id,user.first_name or "",transcribed)
         if reply:

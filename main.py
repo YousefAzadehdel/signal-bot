@@ -83,7 +83,6 @@ def save_summaries():
 users_db=load_users(); banned_users=load_banned(); group_stats=load_group_stats(); pending_items={}; chat_history=load_history(); chat_summaries=load_summaries(); last_signal_pair={"pair":"?","direction":""}
 pending_photo={}
 
-# ===== کیبورد کشویی پایین صفحه =====
 def get_main_reply_keyboard(lang="fa"):
     if lang == "ru":
         rows = [
@@ -157,7 +156,7 @@ async def edit_image_bytes(photo_bytes,edit_prompt):
         if re.search(r'[\u0600-\u06FF]',edit_prompt):
             if "پس" in edit_prompt and "دریا" in edit_prompt: edit_prompt_en="Change the background to a beautiful sea beach, keep all people exactly the same, same faces, same clothes, same pose"
             elif "سیاه سفید" in edit_prompt or "سیاه‌سفید" in edit_prompt: edit_prompt_en="Make this photo black and white, keep everything else same"
-            elif "حذف" in edit_prompt or "پاک کن" in edit_prompt: edit_prompt_en=f"Edit this photo, remove the mentioned object/person, fill background naturally"
+            elif "حذف" in edit_prompt or "پاک کن" in edit_prompt: edit_prompt_en="Edit this photo, remove the mentioned object/person, fill background naturally"
             else:
                 try: edit_prompt_en=generate_with_fallback([f"Translate this photo edit instruction to English, short and clear, for an image editing model. Output ONLY English: {edit_prompt}"])
                 except: edit_prompt_en=edit_prompt
@@ -809,9 +808,7 @@ async def handle_text(update:Update,context:ContextTypes.DEFAULT_TYPE):
             pending_items[user.id]={"type":"text","text":msg}
             await update.message.reply_text("این چیه؟ 👇",reply_markup=get_choice_keyboard()); return
         await update.message.reply_text("سیگنالت رو بفرست تا بفرستم توی گروه ✅"); return
-
     lang_now=get_lang(user.id); kb=get_reply_kb_or_none(user.id); btn=msg.strip()
-    # ===== دکمه‌های کیبورد کشویی پایین صفحه =====
     if btn in ["📝 ثبت نام","📝 Регистрация","📝 Register"]:
         await update.message.reply_text(f"برای عضویت، اول با لینک من ثبت نام کن 👇\n\n{REFERRAL_LINK}\n\nبعدش برگرد اینجا بزن «✅ ثبت نام کردم».\n\n✅ تمام خدمات ما رایگان هستش.",reply_markup=kb); return
     if btn in ["👀 نمایی از گروه","👀 Обзор группы","👀 Group Preview"]:
@@ -833,7 +830,6 @@ async def handle_text(update:Update,context:ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("بزن بریم 😊 بگو در مورد چی حرف بزنیم؟",reply_markup=kb); return
     if btn in ["🔄 شروع دوباره","🔄 Начать заново","🔄 Restart"]:
         await restart_command(update,context); return
-
     if user.id in pending_photo:
         m=msg.lower().strip()
         if m in ["ترجمه","ترجمه کن","ترجمش کن","translate","переведи","ترجمه کن لطفا","ترجمه کن برام","ترجمه کن اینو"]:
@@ -1013,7 +1009,6 @@ async def handle_photo(update:Update,context:ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("عکست رسید، ولی نتونستم خوب تحلیلش کنم 😅 بگو باهاش چی کار کنم؟ ترجمه کنم؟ ادیت کنم؟",reply_markup=kb)
         return
 
-# ===== ویدیو - بات حالا ویدیو رو می‌خونه =====
 async def handle_video(update:Update,context:ContextTypes.DEFAULT_TYPE):
     user=update.effective_user; msg=update.message.caption or ""
     if is_banned(user.id): await update.message.reply_text(TEXTS["fa"]["banned_msg"]); return
@@ -1026,7 +1021,6 @@ async def handle_video(update:Update,context:ContextTypes.DEFAULT_TYPE):
     if is_admin(update):
         pending_items[user.id]={"type":"video","file_id":video_obj.file_id,"caption":msg}
         await update.message.reply_text("این ویدیو چیه؟ 👇",reply_markup=get_choice_keyboard()); return
-    # اگه کپشن واضح داره
     if msg.strip():
         m_low=msg.lower()
         if "ترجمه" in m_low or "translate" in m_low or "переведи" in m_low:
@@ -1167,11 +1161,11 @@ def main():
     app.add_handler(MessageHandler(filters.PHOTO,handle_photo))
     app.add_handler(MessageHandler(filters.VIDEO | filters.VIDEO_NOTE,handle_video))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,handle_text))
+    app.add_handler```python
     app.add_handler(ChatJoinRequestHandler(on_chat_join_request))
-    app.add```python
-    app.add_handler(ChatMemberHandler(on_chat_member,ChatMemberHandler.CHAT_MEMBER))
-    print("Rahavard is running... ✅ SLIDING KEYBOARD + VIDEO - auto analyze, auto translate, lang-aware register")
+    app.add_handler(ChatMemberHandler(on_chat_member, ChatMemberHandler.CHAT_MEMBER))
+    print("Rahavard is running... ✅ SLIDING KEYBOARD + VIDEO")
     app.run_polling(drop_pending_updates=True)
 
-if __name__=="__main__":
+if __name__ == "__main__":
     main()

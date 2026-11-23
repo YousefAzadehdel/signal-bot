@@ -1073,7 +1073,7 @@ async def handle_voice(update:Update,context:ContextTypes.DEFAULT_TYPE):
             news=get_forex_factory_news() or get_forex_news_with_ai()
             if news: await update.message.reply_text(news,reply_markup=kb)
             else: await update.message.reply_text("نتونستم اخبار رو بگیرم 😅",reply_markup=kb )
-                return
+            return
         if intent=="link_request":
             platform=detect_link_platform(user_text); lang=get_lang(user.id)
             links=build_direct_links(user_text,platform,lang)

@@ -5,6 +5,7 @@ import re
 import json
 import datetime
 from io import BytesIO
+from urllib.parse import quote
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -166,8 +167,13 @@ async def send_voice_reply(context, chat_id, text, lang="fa"):
     if not HAS_TTS: return False
     tts_lang = {"fa": "fa", "en": "en", "ru": "ru"}.get(lang, "fa")
     try:
+        short = text.strip()
+        if len(short) > 400:
+            parts = re.split(r'[.!؟\n]', short)
+            short = ". ".join([p.strip() for p in parts if p.strip()][:2])[:400]
+        if not short: return False
         buf = BytesIO()
-        gTTS(text=text, lang=tts_lang, slow=False).write_to_fp(buf)
+        gTTS(text=short, lang=tts_lang, slow=False).write_to_fp(buf)
         buf.seek(0)
         await context.bot.send_voice(chat_id=chat_id, voice=buf)
         return True
@@ -228,10 +234,9 @@ def show_buttons_for(uid):
 def should_show_keyboard(uid): return not users_db.get(str(uid), {}).get("hide_buttons", False)
 def get_keyboard_or_none(uid, keyboard): return keyboard if should_show_keyboard(uid) else None
 
-# ===== لینک عمومی: یوتیوب، اینستا، خرید، آهنگ، گروه و... =====
 def is_any_link_request(msg):
     m = msg.lower()
-    kws = ["لینک بده", "لینک بفرست", "لینکشو بده", "لینک میخوام", "لینک می‌خوام", "لینک رو بده", "لینک یوتوب", "لینک یوتیوب", "لینک اینستا", "لینک اینستاگرام", "لینک فیلم", "لینک آهنگ", "لینک خرید", "از کجا بخرم", "لینک آموزش", "لینک دانلود", "give link", "send link", "link please", "youtube link", "instagram link", "link to video", "дай ссылку", "отправь ссылку", "ссылка на видео", "ссылка на ютуб", "ссылка на инстаграм", "لپ تاپ", "لپتاپ", "купить", "где купить"]
+    kws = ["لینک بده", "لینک بفرست", "لینکشو بده", "لینک میخوام", "لینک می‌خوام", "لینک رو بده", "لینک یوتوب", "لینک یوتیوب", "لینک اینستا", "لینک اینستاگرام", "لینک فیلم", "لینک آهنگ", "لینک خرید", "لینک مستقیم", "خرید مستقیم", "از کجا بخرم", "لینک آموزش", "لینک دانلود", "give link", "send link", "link please", "youtube link", "instagram link", "link to video", "дай ссылку", "отправь ссылку", "ссылка на видео", "ссылка на ютуб", "ссылка на инстаграм", "لپ تاپ", "لپتاپ", "купить", "где купить"]
     return any(k in m for k in kws)
 def detect_link_platform(msg):
     m = msg.lower()
@@ -244,6 +249,22 @@ def detect_link_platform(msg):
     if any(k in m for k in ["گروه", "group", "групп"]): return "group"
     if any(k in m for k in ["ثبت نام", "ثبت‌نام", "register", "регистрац"]): return "register"
     return "general"
+
+def build_direct_links(query, platform):
+    q = query.strip() if query.strip() else "laptop"
+    if platform == "youtube":
+        return [f"https://www.youtube.com/results?search_query={quote(q)}"]
+    if platform == "instagram":
+        return [f"https://www.instagram.com/explore/search/keyword/?q={quote(q)}"]
+    if platform == "tiktok":
+        return [f"https://www.tiktok.com/search?q={quote(q)}"]
+    if platform == "telegram":
+        return [f"https://t.me/s/{quote(q)}"]
+    if platform == "music":
+        return [f"https://open.spotify.com/search/{quote(q)}", f"https://www.youtube.com/results?search_query={quote(q)}"]
+    if platform == "shopping":
+        return [f"https://kaspi.kz/shop/search/?text={quote(q)}", f"https://www.sulpak.kz/search/{quote(q)}", f"https://www.technodom.kz/search?query={quote(q)}"]
+    return [f"https://www.google.com/search?q={quote(q)}"]
 
 EXCHANGE_INFO = {
     "fa": "صرافی The True Trade یه صرافی غیرمتمرکز (DEX) برای معاملات فیوچرز دائمی کریپتوئه، روی شبکه BNB Chain.\n\nخوبی‌هاش:\n✅ بدون احراز هویت (KYC) - فقط با کیف پول یا ایمیل وصل میشی\n✅ پولت دست خودته، صرافی پولت رو نگه نمی‌داره\n✅ بیش از ۵۰ ارز، تا اهرم 1001x\n✅ کارمزد ثابت و پایین، بدون کارمزد فاندینگ (Funding) - یعنی اگه معامله رو باز نگه داری هر ۸ ساعت ازت پول کم نمیشه\n✅ حالت دمو داره، می‌تونی اول با پول مجازی تمرین کنی\n\nو اگه با کد 37681671 ثبت نام کنی، هم وارد گروه VIP ما میشی، هم توی همه معاملاتت کارمزد کمتری میدی.",
@@ -426,9 +447,10 @@ USER INFO:
 - Registration status: {status}
 - Referral link (USE ONLY if topic is ask_group/register and user said yes): {REFERRAL_LINK}
 YOUR RULES:
-- If user asks "what is your name / who are you", say: My name is Rahavard, I can chat with text AND voice, answer questions, help with registration, guide you to join us if you want. I CAN: send you a voice message if you ask. I CAN'T: predict future of market, add to VIP without admin, make a video of myself. SHORT, in user's language.
+- If user asks "what is your name / who are you", say: My name is Rahavard, I can chat with text AND voice, answer questions, help with registration, guide you to join us if you want. I CAN: send you a voice message if you ask, and give you a direct search link for Kaspi / YouTube / Instagram. I CAN'T: predict future of market, add to VIP without admin, make a video of myself. SHORT, in user's language.
 - BUTTONS: If user asks to hide buttons, say "Done, I removed them ✅" and confirm. NEVER say "not in my hands". After hiding, NEVER show buttons again until user explicitly asks "show buttons / برگردون".
 - PREVIEW RULE: If user asks for preview, NEVER invent signal text. Only real TP/SL photos are sent by system.
+- LINKS: NEVER say "I can't give link" or "my access is limited". You CAN give direct search links for Kaspi, YouTube, Instagram, etc.
 - Do NOT promise "I will make you fluent" or "predict market". Be honest.
 {lang_rule}
 {greeting_rule}
@@ -916,7 +938,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif lang == "en": txt = "My name is Rahavard 😊\nI can chat with you by text and voice, answer your questions, help with registration, and if you want, guide you to join us.\nI CAN'T: predict the future of the market and add you to VIP without admin.\n\nWhat's your name?"
         else: txt = "اسمم رهاورده 😊\nمیتونم باهات با متن و ویس گپ بزنم، سوالاتت رو جواب بدم، توی ثبت نام کمکت کنم، و اگه خودت خواستی راهنماییت کنم که چجوری به جمع ما بیای.\nنمیتونم: آینده بازار رو پیش‌گویی کنم و بدون تایید ادمین ببرمت توی VIP.\n\nتو اسم چیه؟"
         await update.message.reply_text(txt); return
-    # ===== لینک عمومی =====
     if is_any_link_request(msg):
         lang = get_lang(user.id)
         lang_name = {"fa": "Persian", "en": "English", "ru": "Russian"}.get(lang, "Persian")
@@ -933,37 +954,31 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if platform == "register":
             await update.message.reply_text(f"بفرما، لینک ثبت‌نام 👇\n\n🔗 {REFERRAL_LINK}")
             return
-        prompt = f"""You are Rahavard, a helpful link finder.
-User wants a LINK. Platform: {platform}. User request: {msg}
-- Language: Reply ONLY in {lang_name}.
-- HARD RULE: NEVER invent a fake video URL like youtube.com/watch?v=xxxx or instagram.com/reel/xxxx. You DON'T know if that video exists.
-- Instead, give REAL, CLICKABLE SEARCH LINKS that always work:
-    * YouTube search: https://www.youtube.com/results?search_query={{query}}
-    * Instagram search: https://www.instagram.com/explore/search/keyword/?q={{query}}
-    * TikTok search: https://www.tiktok.com/search?q={{query}}
-    * Telegram search: https://t.me/s/{{query}}
-    * Spotify search: https://open.spotify.com/search/{{query}}
-    * Google search: https://www.google.com/search?q={{query}}
-    * Kaspi KZ search: https://kaspi.kz/shop/search/?text={{query}}
-- If user request is vague like "لینک فیلم بده" without saying WHAT video, ask ONE short question: "چه فیلمی؟ اسمش چیه؟" - DO NOT give random link.
-- If request is clear, give 2-3 best search links for that platform, with the query filled in + 1 line what they will find + 1 tip if needed.
-- For shopping in Kazakhstan: ask budget if not given, else give 2-3 models + Kaspi links.
-- Keep it 6-10 lines, practical.
-CONVERSATION HISTORY:
-{history_text}
-USER WANTS:
-{msg}
-Reply in {lang_name} ONLY:"""
-        try:
-            await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-            raw = generate_with_fallback([prompt])
-            cleaned = clean_all_replies(raw, is_first_message=False)
-            add_to_history(user.id, "user", msg)
-            add_to_history(user.id, "bot", cleaned)
-            await update.message.reply_text(cleaned)
-        except Exception as e:
-            print("link error:", e)
-            await update.message.reply_text("بگو دقیق چی می‌خوای؟ اسم فیلم / آهنگ / محصول چیه؟ تا لینک دقیقش رو بفرستم 😊")
+        q = msg
+        for w in ["لینک بده", "لینک بفرست", "لینکشو بده", "لینک میخوام", "لینک می‌خوام", "لینک رو بده", "لینک خرید", "لینک مستقیم", "خرید مستقیم", "من لینک", "give link", "send link"]:
+            q = q.replace(w, "")
+        q = q.strip()
+        if not q or len(q) < 3:
+            hist = history_text.lower()
+            if "لپ" in hist or "laptop" in hist: q = "لپ تاپ گیمینگ"
+            elif "گوشی" in hist or "phone" in hist: q = "گوشی"
+            else: q = "لپ تاپ"
+        links = build_direct_links(q, platform)
+        if lang == "fa":
+            txt = f"بفرما، لینک مستقیم 👇\n\n"
+            for L in links: txt += f"🔗 {L}\n"
+            txt += f"\nروش بزن، قیمت روز و فروشنده‌ها رو می‌بینی. بودجت رو بگو تا دقیق‌تر بگم کدوم مدل بگیر."
+        elif lang == "ru":
+            txt = f"Вот прямая ссылка 👇\n\n"
+            for L in links: txt += f"🔗 {L}\n"
+            txt += f"\nНажми, увидишь цену и продавцов. Скажи бюджет, подскажу точную модель."
+        else:
+            txt = f"Here is direct link 👇\n\n"
+            for L in links: txt += f"🔗 {L}\n"
+            txt += f"\nClick to see price and sellers. Tell me your budget and I'll pick exact model."
+        add_to_history(user.id, "user", msg)
+        add_to_history(user.id, "bot", txt)
+        await update.message.reply_text(txt)
         return
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     reply = get_chat_reply(user.id, user.first_name or "", msg)
@@ -1044,6 +1059,42 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if is_admin(update):
             pending_items[user.id] = {"type": "text", "text": transcribed}
             await update.message.reply_text(f"🎤 شنیدم گفتی:\n{transcribed}\n\nاین چیه؟ 👇", reply_markup=get_choice_keyboard()); return
+        if is_any_link_request(transcribed):
+            platform = detect_link_platform(transcribed)
+            lang = get_lang(user.id)
+            if platform == "group":
+                await update.message.reply_text(f"برای ورود به گروه اول باید ثبت‌نام کنی 👇\n\n🔗 {REFERRAL_LINK}")
+                return
+            if platform == "register":
+                await update.message.reply_text(f"بفرما 👇\n\n🔗 {REFERRAL_LINK}")
+                return
+            q = transcribed
+            for w in ["من لینک خرید مستقیم میخوام", "لینک خرید مستقیم میخوام", "لینک خرید", "لینک مستقیم", "خرید مستقیم", "من لینک", "لینک بده", "لینک بفرست"]:
+                q = q.replace(w, "")
+            q = q.strip()
+            if not q or len(q) < 3:
+                hist = get_history_text(user.id, limit=10).lower()
+                if "لپ" in hist or "laptop" in hist: q = "لپ تاپ گیمینگ"
+                elif "گوشی" in hist or "phone" in hist: q = "گوشی"
+                else: q = "لپ تاپ"
+            links = build_direct_links(q, platform)
+            if lang == "fa":
+                txt = f"بفرما، لینک مستقیم خرید 👇\n\n"
+                for L in links: txt += f"🔗 {L}\n"
+                txt += f"\nروش بزن، قیمت روز و فروشنده‌ها رو می‌بینی. بودجت رو بگو تا دقیق‌تر بگم کدوم مدل بگیر."
+            elif lang == "ru":
+                txt = f"Вот прямая ссылка на покупку 👇\n\n"
+                for L in links: txt += f"🔗 {L}\n"
+                txt += f"\nНажми, увидишь цену и продавцов. Скажи бюджет, подскажу точную модель."
+            else:
+                txt = f"Here is direct buy link 👇\n\n"
+                for L in links: txt += f"🔗 {L}\n"
+                txt += f"\nClick to see price and sellers. Tell me your budget and I'll pick exact model."
+            ok = await send_voice_reply(context, update.effective_chat.id, txt, lang)
+            await update.message.reply_text(f"🎤 شنیدم گفتی: {transcribed}\n\n{txt}")
+            add_to_history(user.id, "user", transcribed)
+            add_to_history(user.id, "bot", txt)
+            return
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
         reply = get_chat_reply(user.id, user.first_name or "", transcribed)
         if reply:
@@ -1052,7 +1103,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ok = await send_voice_reply(context, update.effective_chat.id, reply, lang)
             await update.message.reply_text(f"🎤 شنیدم گفتی: {transcribed}\n\n{reply}")
             if not ok:
-                await update.message.reply_text("خواستم با ویس جوابت رو بدم ولی نشد، متنش رو بالا نوشتم 😅")
+                await update.message.reply_text("ویس رو نتونستم بفرستم ولی متنش رو بالا نوشتم 😅")
         else:
             await update.message.reply_text("شنیدمت 😊 ولی یه لحظه قطع شد، دوباره بگو")
     except Exception as e:

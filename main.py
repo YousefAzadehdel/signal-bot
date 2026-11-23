@@ -176,7 +176,7 @@ async def send_voice_reply(context, chat_id, text, lang="fa"):
         return False
 def is_voice_request(msg):
     m = msg.lower()
-    kws = ["ویس بفرست", "ویس بگو", "با صدا بگو", "صدات رو بفرست", "صوتی بگو", "send voice", "voice message", "отправь голосовое", "скажи голосом"]
+    kws = ["ویس بفرست", "ویس بگو", "با صدا بگو", "صدات رو بفرست", "صوتی بگو", "با ویس", "send voice", "voice message", "отправь голосовое", "скажи голосом", "голосом"]
     return any(k in m for k in kws)
 
 def is_banned(uid): return str(uid) in banned_users
@@ -227,6 +227,23 @@ def show_buttons_for(uid):
     users_db.setdefault(str(uid), {})["hide_buttons"] = False; save_users(users_db)
 def should_show_keyboard(uid): return not users_db.get(str(uid), {}).get("hide_buttons", False)
 def get_keyboard_or_none(uid, keyboard): return keyboard if should_show_keyboard(uid) else None
+
+# ===== لینک عمومی: یوتیوب، اینستا، خرید، آهنگ، گروه و... =====
+def is_any_link_request(msg):
+    m = msg.lower()
+    kws = ["لینک بده", "لینک بفرست", "لینکشو بده", "لینک میخوام", "لینک می‌خوام", "لینک رو بده", "لینک یوتوب", "لینک یوتیوب", "لینک اینستا", "لینک اینستاگرام", "لینک فیلم", "لینک آهنگ", "لینک خرید", "از کجا بخرم", "لینک آموزش", "لینک دانلود", "give link", "send link", "link please", "youtube link", "instagram link", "link to video", "дай ссылку", "отправь ссылку", "ссылка на видео", "ссылка на ютуб", "ссылка на инстаграм", "لپ تاپ", "لپتاپ", "купить", "где купить"]
+    return any(k in m for k in kws)
+def detect_link_platform(msg):
+    m = msg.lower()
+    if any(k in m for k in ["یوتوب", "یوتیوب", "youtube", "ютуб"]): return "youtube"
+    if any(k in m for k in ["اینستا", "اینستاگرام", "instagram", "инстаграм", "рилс", "reels"]): return "instagram"
+    if any(k in m for k in ["تلگرام", "telegram", "телеграм"]): return "telegram"
+    if any(k in m for k in ["تیک تاک", "tiktok", "тикток"]): return "tiktok"
+    if any(k in m for k in ["آهنگ", "موزیک", "music", "песня", "музыка", "spotify"]): return "music"
+    if any(k in m for k in ["خرید", "بخرم", "buy", "купить", "kaspi", "کاسپی", "لپ تاپ", "لپتاپ", "گوشی", "ноутбук"]): return "shopping"
+    if any(k in m for k in ["گروه", "group", "групп"]): return "group"
+    if any(k in m for k in ["ثبت نام", "ثبت‌نام", "register", "регистрац"]): return "register"
+    return "general"
 
 EXCHANGE_INFO = {
     "fa": "صرافی The True Trade یه صرافی غیرمتمرکز (DEX) برای معاملات فیوچرز دائمی کریپتوئه، روی شبکه BNB Chain.\n\nخوبی‌هاش:\n✅ بدون احراز هویت (KYC) - فقط با کیف پول یا ایمیل وصل میشی\n✅ پولت دست خودته، صرافی پولت رو نگه نمی‌داره\n✅ بیش از ۵۰ ارز، تا اهرم 1001x\n✅ کارمزد ثابت و پایین، بدون کارمزد فاندینگ (Funding) - یعنی اگه معامله رو باز نگه داری هر ۸ ساعت ازت پول کم نمیشه\n✅ حالت دمو داره، می‌تونی اول با پول مجازی تمرین کنی\n\nو اگه با کد 37681671 ثبت نام کنی، هم وارد گروه VIP ما میشی، هم توی همه معاملاتت کارمزد کمتری میدی.",
@@ -409,7 +426,7 @@ USER INFO:
 - Registration status: {status}
 - Referral link (USE ONLY if topic is ask_group/register and user said yes): {REFERRAL_LINK}
 YOUR RULES:
-- If user asks "what is your name / who are you", say: My name is Rahavard, I can chat, answer questions, help with registration, guide you to join us if you want. I CAN'T: predict future of market, add to VIP without admin. SHORT, in user's language.
+- If user asks "what is your name / who are you", say: My name is Rahavard, I can chat with text AND voice, answer questions, help with registration, guide you to join us if you want. I CAN: send you a voice message if you ask. I CAN'T: predict future of market, add to VIP without admin, make a video of myself. SHORT, in user's language.
 - BUTTONS: If user asks to hide buttons, say "Done, I removed them ✅" and confirm. NEVER say "not in my hands". After hiding, NEVER show buttons again until user explicitly asks "show buttons / برگردون".
 - PREVIEW RULE: If user asks for preview, NEVER invent signal text. Only real TP/SL photos are sent by system.
 - Do NOT promise "I will make you fluent" or "predict market". Be honest.
@@ -844,10 +861,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if is_voice_request(msg):
         lang = get_lang(user.id)
-        reply = get_chat_reply(user.id, user.first_name or "", "سلام، یه جمله کوتاه بگو")
+        reply = get_chat_reply(user.id, user.first_name or "", "با ویس باهام حرف بزن، یه جمله صمیمی و کوتاه بگو")
         if reply:
+            reply = clean_all_replies(reply, is_first_message=False)
             ok = await send_voice_reply(context, update.effective_chat.id, reply, lang)
-            if not ok: await update.message.reply_text(reply)
+            await update.message.reply_text(f"🎤 {reply}")
+            if not ok:
+                await update.message.reply_text("ویس رو نتونستم بفرستم، متنش رو بالا نوشتم 😅")
         return
     if is_hide_buttons_request(msg):
         hide_buttons_for(user.id)
@@ -892,10 +912,59 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(txt, reply_markup=get_keyboard_or_none(user.id, get_welcome_keyboard(user.id))); return
     if is_who_are_you(msg):
         lang = get_lang(user.id)
-        if lang == "ru": txt = "Меня зовут Рахавард 😊\nЯ могу болтать с тобой, отвечать на вопросы, помогать с регистрацией, и если захочешь, помочь тебе присоединиться к нам.\nЯ НЕ могу: предсказывать будущее рынка и добавлять в VIP без админа.\n\nА тебя как зовут?"
-        elif lang == "en": txt = "My name is Rahavard 😊\nI can chat with you, answer your questions, help with registration, and if you want, guide you to join us.\nI CAN'T: predict the future of the market and add you to VIP without admin.\n\nWhat's your name?"
-        else: txt = "اسمم رهاورده 😊\nمیتونم باهات گپ بزنم، سوالاتت رو جواب بدم، توی ثبت نام کمکت کنم، و اگه خودت خواستی راهنماییت کنم که چجوری به جمع ما بیای.\nنمیتونم: آینده بازار رو پیش‌گویی کنم و بدون تایید ادمین ببرمت توی VIP.\n\nتو اسم چیه؟"
+        if lang == "ru": txt = "Меня зовут Рахавард 😊\nЯ могу болтать с тобой текстом и голосом, отвечать на вопросы, помогать с регистрацией, и если захочешь, помочь тебе присоединиться к нам.\nЯ НЕ могу: предсказывать будущее рынка и добавлять в VIP без админа.\n\nА тебя как зовут?"
+        elif lang == "en": txt = "My name is Rahavard 😊\nI can chat with you by text and voice, answer your questions, help with registration, and if you want, guide you to join us.\nI CAN'T: predict the future of the market and add you to VIP without admin.\n\nWhat's your name?"
+        else: txt = "اسمم رهاورده 😊\nمیتونم باهات با متن و ویس گپ بزنم، سوالاتت رو جواب بدم، توی ثبت نام کمکت کنم، و اگه خودت خواستی راهنماییت کنم که چجوری به جمع ما بیای.\nنمیتونم: آینده بازار رو پیش‌گویی کنم و بدون تایید ادمین ببرمت توی VIP.\n\nتو اسم چیه؟"
         await update.message.reply_text(txt); return
+    # ===== لینک عمومی =====
+    if is_any_link_request(msg):
+        lang = get_lang(user.id)
+        lang_name = {"fa": "Persian", "en": "English", "ru": "Russian"}.get(lang, "Persian")
+        platform = detect_link_platform(msg)
+        history_text = get_history_text(user.id, limit=10)
+        if platform == "group":
+            status = users_db.get(str(user.id), {}).get("status", "not_registered")
+            if status == "approved_by_admin":
+                fresh = await get_fresh_group_link(context, user.id)
+                await update.message.reply_text(f"بفرما 👇\n\n👥 {fresh}")
+                return
+            await update.message.reply_text(f"برای ورود به گروه اول باید ثبت‌نام کنی 👇\n\n🔗 {REFERRAL_LINK}")
+            return
+        if platform == "register":
+            await update.message.reply_text(f"بفرما، لینک ثبت‌نام 👇\n\n🔗 {REFERRAL_LINK}")
+            return
+        prompt = f"""You are Rahavard, a helpful link finder.
+User wants a LINK. Platform: {platform}. User request: {msg}
+- Language: Reply ONLY in {lang_name}.
+- HARD RULE: NEVER invent a fake video URL like youtube.com/watch?v=xxxx or instagram.com/reel/xxxx. You DON'T know if that video exists.
+- Instead, give REAL, CLICKABLE SEARCH LINKS that always work:
+    * YouTube search: https://www.youtube.com/results?search_query={{query}}
+    * Instagram search: https://www.instagram.com/explore/search/keyword/?q={{query}}
+    * TikTok search: https://www.tiktok.com/search?q={{query}}
+    * Telegram search: https://t.me/s/{{query}}
+    * Spotify search: https://open.spotify.com/search/{{query}}
+    * Google search: https://www.google.com/search?q={{query}}
+    * Kaspi KZ search: https://kaspi.kz/shop/search/?text={{query}}
+- If user request is vague like "لینک فیلم بده" without saying WHAT video, ask ONE short question: "چه فیلمی؟ اسمش چیه؟" - DO NOT give random link.
+- If request is clear, give 2-3 best search links for that platform, with the query filled in + 1 line what they will find + 1 tip if needed.
+- For shopping in Kazakhstan: ask budget if not given, else give 2-3 models + Kaspi links.
+- Keep it 6-10 lines, practical.
+CONVERSATION HISTORY:
+{history_text}
+USER WANTS:
+{msg}
+Reply in {lang_name} ONLY:"""
+        try:
+            await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+            raw = generate_with_fallback([prompt])
+            cleaned = clean_all_replies(raw, is_first_message=False)
+            add_to_history(user.id, "user", msg)
+            add_to_history(user.id, "bot", cleaned)
+            await update.message.reply_text(cleaned)
+        except Exception as e:
+            print("link error:", e)
+            await update.message.reply_text("بگو دقیق چی می‌خوای؟ اسم فیلم / آهنگ / محصول چیه؟ تا لینک دقیقش رو بفرستم 😊")
+        return
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     reply = get_chat_reply(user.id, user.first_name or "", msg)
     if reply:
@@ -979,14 +1048,17 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply = get_chat_reply(user.id, user.first_name or "", transcribed)
         if reply:
             reply = clean_all_replies(reply, is_first_message=False)
+            lang = get_lang(user.id)
+            ok = await send_voice_reply(context, update.effective_chat.id, reply, lang)
             await update.message.reply_text(f"🎤 شنیدم گفتی: {transcribed}\n\n{reply}")
+            if not ok:
+                await update.message.reply_text("خواستم با ویس جوابت رو بدم ولی نشد، متنش رو بالا نوشتم 😅")
         else:
             await update.message.reply_text("شنیدمت 😊 ولی یه لحظه قطع شد، دوباره بگو")
     except Exception as e:
         print("voice error:", e)
         await update.message.reply_text("ویس رو نتونستم گوش کنم 😅 یه بار دیگه بفرست، یا متنی بنویس")
 
-# ===== جدید: ویدیو + کلیپ کوتاه (ویدیو‌نوت) =====
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if is_banned(user.id) and not is_admin(update):

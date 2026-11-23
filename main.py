@@ -1161,11 +1161,10 @@ def main():
     app.add_handler(MessageHandler(filters.PHOTO,handle_photo))
     app.add_handler(MessageHandler(filters.VIDEO | filters.VIDEO_NOTE,handle_video))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,handle_text))
-    app.add_handler```python
     app.add_handler(ChatJoinRequestHandler(on_chat_join_request))
-    app.add_handler(ChatMemberHandler(on_chat_member, ChatMemberHandler.CHAT_MEMBER))
+    app.add_handler(ChatMemberHandler(on_chat_member,ChatMemberHandler.CHAT_MEMBER))
     print("Rahavard is running... ✅ SLIDING KEYBOARD + VIDEO")
     app.run_polling(drop_pending_updates=True)
 
-if __name__ == "__main__":
+if __name__=="__main__":
     main()

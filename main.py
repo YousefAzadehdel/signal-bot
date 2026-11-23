@@ -159,7 +159,6 @@ async def generate_image_bytes(prompt_text):
         print("image gen error:", e)
     return None
 
-# ===== ادیت عکس =====
 def is_photo_edit_request(msg):
     if not msg: return False
     m = msg.lower()
@@ -190,23 +189,40 @@ async def send_voice_reply(context, chat_id, text, lang="fa"):
     try:
         clean = text.strip()
         clean = clean.replace("رهورد", "رهاورد").replace("Rahord", "Rahavard").replace("Рахорд", "Рахавард")
-        if lang == "fa":
-            clean = clean.replace("رهاورد", "رها ورد")
         clean = re.sub(r'https?://\S+', ' ', clean)
         clean = re.sub(r'[^\w\s\u0600-\u06FF\u0400-\u04FFa-zA-Z.,!?؟،\n]', ' ', clean)
+        clean = clean.replace('\u200c', ' ').replace('\u200f', ' ').replace('\u200e', ' ')
         clean = re.sub(r'\s+', ' ', clean).strip()
-        if len(clean) > 400:
-            parts = re.split(r'[.!؟\n]', clean)
-            clean = ". ".join([p.strip() for p in parts if p.strip()][:2])[:400]
+        if lang == "fa":
+            clean = clean.replace("رهاورد", "رها ورد")
+            if len(clean) > 250:
+                parts = re.split(r'[.!؟\n]', clean)
+                clean = ". ".join([p.strip() for p in parts if p.strip()][:2])[:250]
+        else:
+            if len(clean) > 400:
+                parts = re.split(r'[.!؟\n]', clean)
+                clean = ". ".join([p.strip() for p in parts if p.strip()][:2])[:400]
         if not clean: return False
-        buf = BytesIO()
-        gTTS(text=clean, lang=tts_lang, slow=False).write_to_fp(buf)
-        buf.seek(0)
-        await context.bot.send_voice(chat_id=chat_id, voice=buf)
-        return True
+        try:
+            buf = BytesIO()
+            gTTS(text=clean, lang=tts_lang, slow=False).write_to_fp(buf)
+            buf.seek(0)
+            await context.bot.send_voice(chat_id=chat_id, voice=buf)
+            return True
+        except Exception as e1:
+            print(f"tts try1 failed lang={lang}:", e1)
+            first = re.split(r'[.!؟\n]', clean)[0].strip()[:150]
+            if first and first != clean:
+                buf2 = BytesIO()
+                gTTS(text=first, lang=tts_lang, slow=False).write_to_fp(buf2)
+                buf2.seek(0)
+                await context.bot.send_voice(chat_id=chat_id, voice=buf2)
+                return True
+            return False
     except Exception as e:
-        print(f"tts error lang={lang} tts_lang={tts_lang}:", e)
+        print(f"tts error lang={lang}:", e)
         return False
+
 def is_voice_request(msg):
     m = msg.lower()
     kws = ["ویس بفرست", "ویس بگو", "با صدا بگو", "صدات رو بفرست", "صوتی بگو", "با ویس", "send voice", "voice message", "отправь голосовое", "скажи голосом", "голосом"]
@@ -463,7 +479,32 @@ def get_chat_prompt(lang, user_name, status, history_text, user_msg, preview_det
     else:
         greeting_rule = "- This is first message. You can greet once, short."
     if topic in ["onboarding", "casual", "no_trade", "english_general"]:
-        topic_rule = f"\n- CURRENT TOPIC: {topic} - ONBOARDING / CASUAL MODE\n- ABSOLUTE BAN: Do NOT mention trading, signal, VIP, TrueTrade, referral link, crypto, leverage, TP/SL, joining group, registration - AT ALL.\n- Just get to know user. Ask ONE short question at a time.\n  * Step 1: 'How did you find me? Someone introduced you or you found me yourself?'\n  * Step 2: 'What do you do these days? Work / study?'\n  * Step 3: 'What do you spend time on? Movie / game / music?' -> 'Have you ever thought about having a second income?'\n- ONLY if user himself says 'how to earn / how to join / what is this group / توضیح بده / چجوری؟' - THEN you can introduce group. Otherwise stay in onboarding.\n- If user says 'I don't want trading' -> topic becomes no_trade, NEVER mention trading again.\n- If user says 'teach me English' and topic is no_trade or english_general -> teach GENERAL English (movie, music, daily). NEVER turn it into 'trading English' unless user explicitly says 'trading English'.\n- If user says 'just chat' -> just chat, NO group reminder.\n- LANGUAGE TEACHING MODE: When user wants to learn English / Russian / Persian:\n  * Say: 'باشه مشکلی نیست، منم حرفه‌ای نیستم ولی هر چقدر بلد باشم بهت کمک می‌کنم تا یاد بگیری' - ONLY ONCE at start of teaching, NEVER repeat.\n  * Then teach for real: 3 new words per lesson with meaning + pronunciation + 1 example each.\n  * Then 1 small quiz: ask meaning of ONE of those 3 words.\n  * NEVER invent a 'previous quiz'. Only refer to quiz if it is in CONVERSATION HISTORY above.\n  * NEVER repeat same 3 words. Each lesson must be NEW words.\n"
+        topic_rule = f"""
+- CURRENT TOPIC: {topic} - ONBOARDING / CASUAL MODE
+- ABSOLUTE BAN: Do NOT mention trading, signal, VIP, TrueTrade, referral link, crypto, leverage, TP/SL, joining group, registration - AT ALL. No link, no button, no "دوست داری به جمع ما اضافه بشی؟"
+- YOUR JOB: Get to know user step by step, ONE question at a time. Do NOT ask 2 questions in one message. Do NOT rush.
+  STEP 1 - If you don't know how user found you yet, ask ONLY this:
+  "بگو ببینم، تو از کجا پیدام کردی؟ یکی معرفی کرده اومدی یا خودت پیدام کردی؟"
+  STEP 2 - If user already answered how they found you, but you DON'T know their job yet, ask ONLY this (in user's language, warm and natural):
+  FA: "راستی تو به چه کاری مشغولی؟ شغلت چیه؟ درس می‌خونی یا کار می‌کنی؟"
+  EN: "By the way, what do you do? What is your job? Do you work or study?"
+  RU: "Кстати, а чем ты занимаешься? Кем работаешь? Учишься или работаешь?"
+  TR: "Bu arada ne iş yapıyorsun? Çalışıyor musun, okuyor musun?"
+  STEP 3 - If you already know their job, but you have NOT asked about second income yet, ask ONLY this (very natural, NOT salesy, like a friend):
+  FA: "تا حالا به شغل دوم و درآمد بیشتر توی زندگیت فکر کردی؟ مثلاً کنار کارت یه درآمد دومی هم داشته باشی؟"
+  EN: "Have you ever thought about a second job and more income in your life? Like having a second income beside your main job?"
+  RU: "А ты когда-нибудь думал о второй работе и большем доходе в жизни? Например, иметь второй доход помимо основной работы?"
+  TR: "Hiç ikinci bir iş ve hayatta daha fazla gelir hakkında düşündün mü? Mesela ana işinin yanında ikinci bir gelirin de olsun?"
+  STEP 4 - ONLY if user himself says "آره / چجوری؟ / توضیح بده / how to earn / how to join / گروهتون چیه" - THEN you can say: "دوست داری بگم چجوری می‌تونی به جمع ما اضافه بشی؟" and wait for yes. Do NOT send link yet.
+- If user says "I don't want trading" -> topic becomes no_trade, NEVER ask about second income again, just chat normally.
+- If user says "teach me English" -> teach GENERAL English, never turn it into trading English.
+- LANGUAGE TEACHING MODE: When user wants to learn English / Russian / Persian:
+    * Say: 'باشه مشکلی نیست، منم حرفه‌ای نیستم ولی هر چقدر بلد باشم بهت کمک می‌کنم تا یاد بگیری' - ONLY ONCE at start of teaching, NEVER repeat.
+    * Then teach for real: 3 new words per lesson with meaning + pronunciation + 1 example each.
+    * Then 1 small quiz: ask meaning of ONE of those 3 words.
+    * NEVER invent a 'previous quiz'. Only refer to quiz if it is in CONVERSATION HISTORY above.
+    * NEVER repeat same 3 words. Each lesson must be NEW words.
+"""
     elif topic == "ask_group":
         topic_rule = "\n- USER ASKED ABOUT GROUP HIMSELF - NOW you are ALLOWED to introduce group.\n- Say: group of people who beside their main job make daily profit from crypto markets. Ask: 'Do you want me to tell you how you can join?'\n- Do NOT send referral link yet. Only if user says 'yes / tell me / چجوری عضو شم' then send referral link + steps.\n"
     elif topic == "register":
@@ -764,60 +805,21 @@ async def preview_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_banned(update.effective_user.id) and not is_admin(update):
         await update.message.reply_text(TEXTS["fa"]["banned_msg"]); return
     lang = get_lang(update.effective_user.id)
-    sent = await send_preview_photos(context.bot, update.effective_chat.id, lang, get_keyboard_or_none(update.effective_user.id, get_welcome_keyboard(update.effective_user.id)))
+    topic_now = get_topic(update.effective_user.id)
+    kb_now = get_keyboard_or_none(update.effective_user.id, get_welcome_keyboard(update.effective_user.id)) if topic_now in ["ask_group", "register"] else None
+    sent = await send_preview_photos(context.bot, update.effective_chat.id, lang, kb_now)
     if sent: return
     preview = get_preview_text(lang, detailed=False)
     if not preview:
-        await update.message.reply_text("هنوز امروز سیگنالی نیومده، ولی تو زودتر ثبت نام کن که اولیش رو از دست ندی 👇", reply_markup=get_keyboard_or_none(update.effective_user.id, get_welcome_keyboard(update.effective_user.id)))
+        await update.message.reply_text("هنوز امروز سیگنالی نیومده، ولی تو زودتر ثبت نام کن که اولیش رو از دست ندی 👇", reply_markup=kb_now)
     else:
-        await update.message.reply_text(f"👀 امروز توی گروه:\n{preview}\n\n📸 عکس‌های TP/SL هنوز نیومده.\n\n🔗 ثبت نام کن:\n{REFERRAL_LINK}", reply_markup=get_keyboard_or_none(update.effective_user.id, get_welcome_keyboard(update.effective_user.id)))
+        await update.message.reply_text(f"👀 امروز توی گروه:\n{preview}\n\n🔗 ثبت نام کن:\n{REFERRAL_LINK}", reply_markup=kb_now)
 async def send_reminders(context: ContextTypes.DEFAULT_TYPE):
-    now = datetime.datetime.now(datetime.timezone.utc)
-    for uid, data in list(users_db.items()):
-        if uid in banned_users: continue
-        if data.get("registered"): continue
-        if not data.get("lang"): continue
-        joined = data.get("joined_at")
-        if not joined:
-            users_db[uid]["joined_at"] = now.isoformat(); users_db[uid]["remind_count"] = 0; save_users(users_db); continue
-        try: joined_dt = datetime.datetime.fromisoformat(joined)
-        except: continue
-        hours = (now - joined_dt).total_seconds() / 3600; count = data.get("remind_count", 0)
-        should_send = (hours >= 1 and count == 0) or (hours >= 24 and count == 1)
-        if not should_send: continue
-        try:
-            lang = data.get("lang", "fa")
-            if lang == "fa": msg = "هی رفیق 😅 یادت رفت ثبت نام کنی؟\nفقط ۲ دقیقه طول می‌کشه، بعدش میای توی VIP 👇"
-            elif lang == "ru": msg = "Эй, друг 😅 Ты забыл зарегистрироваться?\nЭто займет всего 2 минуты, потом ты в VIP 👇"
-            else: msg = "Hey friend 😅 Did you forget to register?\nIt takes only 2 minutes, then you are in VIP 👇"
-            await context.bot.send_message(chat_id=int(uid), text=msg, reply_markup=get_keyboard_or_none(int(uid), get_welcome_keyboard(int(uid))))
-            users_db[uid]["remind_count"] = count + 1; save_users(users_db)
-        except Exception as e: print(f"reminder error {uid}:", e)
+    # خاموش شد - تا وقتی کاربر خودش نخواد، یادآوری ثبت‌نام هم نمیفرستیم
+    return
 async def send_daily_group_prompt(context: ContextTypes.DEFAULT_TYPE):
-    now = datetime.datetime.now(datetime.timezone.utc)
-    for uid, data in list(users_db.items()):
-        if uid in banned_users: continue
-        if data.get("registered"): continue
-        if not data.get("lang"): continue
-        if data.get("topic") in ["casual", "no_trade", "english_general"]: continue
-        joined = data.get("joined_at")
-        if joined:
-            try:
-                if (now - datetime.datetime.fromisoformat(joined)).total_seconds() < 24 * 3600: continue
-            except: pass
-        last = data.get("last_group_prompt")
-        if last:
-            try:
-                if (now - datetime.datetime.fromisoformat(last)).total_seconds() < 24 * 3600: continue
-            except: pass
-        try:
-            lang = data.get("lang", "fa")
-            if lang == "fa": msg = f"سلام {data.get('first_name','')} 👋\n\nراستی دوست داری به جمع ما اضافه بشی؟ 😊\nتوی گروه ما بچه‌ها علاوه بر شغل فعلیشون دارن روزانه از بازارهای مالی کریپتو سود کسب میکنن 📈\nاگه دوست داری بیای، بگو تا راهنماییت کنم 👇"
-            elif lang == "ru": msg = f"Привет {data.get('first_name','')} 👋\n\nКстати, хочешь присоединиться к нам? 😊\nВ нашей группе ребята, помимо своей основной работы, ежедневно зарабатывают на крипто-финансовых рынках 📈\nЕсли хочешь прийти, скажи, я тебе помогу 👇"
-            else: msg = f"Hi {data.get('first_name','')} 👋\n\nBy the way, would you like to join us? 😊\nIn our group, besides their current jobs, they are making daily profit from crypto financial markets 📈\nIf you want to come, tell me and I'll guide you 👇"
-            await context.bot.send_message(chat_id=int(uid), text=msg, reply_markup=get_keyboard_or_none(int(uid), get_welcome_keyboard(int(uid))))
-            users_db[uid]["last_group_prompt"] = now.isoformat(); save_users(users_db)
-        except Exception as e: print(f"daily prompt error {uid}:", e)
+    # خاموش شد - تا وقتی کاربر خودش نخواد، حرفی از گروه و ثبت‌نام نمیزنیم
+    return
 
 async def send_as_signal(item, user, context):
     await context.bot.send_message(chat_id=user.id, text=t(user.id, "analyzing"))
@@ -914,7 +916,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("نتونستم عکس رو بسازم 😅 دوباره با یه جمله واضح‌تر بگو")
         return
     if is_photo_edit_request(msg) and not msg.startswith("/"):
-        # اگه فقط متن ادیت فرستاد بدون عکس، بگو عکس بفرست
         lang = get_lang(user.id)
         if lang == "fa": txt = "باشه 😊 عکس رو با همون جمله بفرست.\nمثلاً عکس رو بفرست و توی کپشن بنویس «پس‌زمینه رو دریا کن»"
         elif lang == "ru": txt = "Хорошо 😊 Пришли фото с этим текстом в подписи.\nНапример, пришли фото и напиши «сделай фон морем»"
@@ -958,13 +959,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if is_preview_request(msg):
         lang = get_lang(user.id)
-        sent = await send_preview_photos(context.bot, update.effective_chat.id, lang, get_keyboard_or_none(user.id, get_welcome_keyboard(user.id)))
+        topic_now = get_topic(user.id)
+        kb_now = get_keyboard_or_none(user.id, get_welcome_keyboard(user.id)) if topic_now in ["ask_group", "register"] else None
+        sent = await send_preview_photos(context.bot, update.effective_chat.id, lang, kb_now)
         if sent: return
         preview = get_preview_text(lang, detailed=False)
         if not preview:
-            await update.message.reply_text("هنوز امروز سیگنالی نیومده، ولی تو زودتر ثبت نام کن که اولیش رو از دست ندی 👇", reply_markup=get_keyboard_or_none(user.id, get_welcome_keyboard(user.id)))
+            await update.message.reply_text("هنوز امروز سیگنالی نیومده، ولی تو زودتر ثبت نام کن که اولیش رو از دست ندی 👇", reply_markup=kb_now)
         else:
-            await update.message.reply_text(f"👀 امروز توی گروه:\n{preview}\n\n🔗 ثبت نام کن:\n{REFERRAL_LINK}", reply_markup=get_keyboard_or_none(user.id, get_welcome_keyboard(user.id)))
+            await update.message.reply_text(f"👀 امروز توی گروه:\n{preview}\n\n🔗 ثبت نام کن:\n{REFERRAL_LINK}", reply_markup=kb_now)
         return
     if is_register_help_request(msg):
         set_topic(user.id, "register")
@@ -1037,7 +1040,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo = update.message.photo[-1]
     caption = (update.message.caption or "").strip()
     if is_admin(update):
-        # ادمین اگه کپشن ادیت باشه، ادیت نمی‌خواد - میره برای سیگنال
         if is_photo_edit_request(caption):
             await update.message.reply_text("🎨 دارم ادیت می‌کنم... ⏳")
             try:
@@ -1052,7 +1054,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         pending_items[user.id] = {"type": "photo", "photo_id": photo.file_id, "caption": caption}
         await update.message.reply_text("این چیه؟ 👇", reply_markup=get_choice_keyboard()); return
-    # ===== ادیت عکس برای کاربر =====
     if is_photo_edit_request(caption):
         lang = get_lang(user.id)
         if lang == "fa": wait_txt = "🎨 دارم ادیت می‌کنم... ⏳"
@@ -1183,7 +1184,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ok = await send_voice_reply(context, update.effective_chat.id, reply, lang)
             await update.message.reply_text(f"🎤 شنیدم گفتی: {transcribed}\n\n{reply}")
             if not ok:
-                await update.message.reply_text("ویس رو نتونستم بفرستم ولی متنش رو بالا نوشتم 😅")
+                await update.message.reply_text("ویس فارسی رو نتونستم بسازم 😅 ولی متنش رو بالا نوشتم، یه جمله کوتاه‌تر بگو تا ویس بفرستم")
         else:
             await update.message.reply_text("شنیدمت 😊 ولی یه لحظه قطع شد، دوباره بگو")
     except Exception as e:
@@ -1264,13 +1265,15 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if data == "preview":
         lang = get_lang(user.id)
-        sent = await send_preview_photos(context.bot, update.effective_chat.id, lang, get_keyboard_or_none(user.id, get_welcome_keyboard(user.id)))
+        topic_now = get_topic(user.id)
+        kb_now = get_keyboard_or_none(user.id, get_welcome_keyboard(user.id)) if topic_now in ["ask_group", "register"] else None
+        sent = await send_preview_photos(context.bot, update.effective_chat.id, lang, kb_now)
         if sent: return
         preview = get_preview_text(lang, detailed=False)
         if not preview:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text="هنوز امروز سیگنالی نیومده، ولی تو زودتر ثبت نام کن که اولیش رو از دست ندی 👇", reply_markup=get_keyboard_or_none(user.id, get_welcome_keyboard(user.id)))
+            await context.bot.send_message(chat_id=update.effective_chat.id, text="هنوز امروز سیگنالی نیومده، ولی تو زودتر ثبت نام کن که اولیش رو از دست ندی 👇", reply_markup=kb_now)
         else:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=f"👀 امروز توی گروه:\n{preview}\n\n🔗 ثبت نام کن:\n{REFERRAL_LINK}", reply_markup=get_keyboard_or_none(user.id, get_welcome_keyboard(user.id)))
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=f"👀 امروز توی گروه:\n{preview}\n\n🔗 ثبت نام کن:\n{REFERRAL_LINK}", reply_markup=kb_now)
         return
     if data == "restart":
         uid = str(user.id)
@@ -1359,9 +1362,6 @@ def main():
     app.add_handler(MessageHandler(filters.VIDEO, handle_video))
     app.add_handler(MessageHandler(filters.VIDEO_NOTE, handle_video))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    if app.job_queue:
-        app.job_queue.run_repeating(send_reminders, interval=3600, first=10)
-        app.job_queue.run_repeating(send_daily_group_prompt, interval=86400, first=60)
     print("Bot started...")
     app.run_polling(drop_pending_updates=True)
 

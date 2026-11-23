@@ -147,9 +147,8 @@ async def edit_image_bytes(photo_bytes,edit_prompt):
 def is_image_request(msg):
     m=msg.lower(); return any(k in m for k in ["عکس بساز","عکس بکش","تصویر بساز","عکس درست کن","یه عکس","make an image","generate image","draw","сделай картинку","нарисуй"])
 
-# ===== FIX باگ 2: ویس - کامل بازنویسی شد =====
+# ===== FIX ویس: فقط 1 جمله 120 کاراکتری، اگه نشد ساکت متن بفرست =====
 async def send_voice_reply(context,chat_id,text,lang="fa"):
-    # قانون جدید: اگه ویس ساخته نشد، فقط False برگردون. هرگز به کاربر نگو خراب شد
     if not HAS_TTS: return False
     detected=detect_lang_from_msg(text)
     if detected: lang=detected
@@ -159,7 +158,6 @@ async def send_voice_reply(context,chat_id,text,lang="fa"):
         clean=re.sub(r'https?://\S+',' ',clean); clean=re.sub(r'[^\w\s\u0600-\u06FF\u0400-\u04FFa-zA-Z.,!?؟،\n]',' ',clean)
         clean=clean.replace('\u200c',' ').replace('\u200f',' ').replace('\u200e',' '); clean=re.sub(r'\s+',' ',clean).strip()
         if not clean: return False
-        # فقط 1 جمله، حداکثر 120 کاراکتر. gTTS فارسی با متن طولانی fail میده
         parts=[p.strip() for p in re.split(r'[.!؟\n]',clean) if p.strip()]
         if not parts: return False
         short=parts[0][:120]
@@ -195,12 +193,8 @@ def get_lang(uid): return users_db.get(str(uid),{}).get("lang","fa")
 def set_lang(uid,lang): users_db.setdefault(str(uid),{})["lang"]=lang; save_users(users_db)
 def get_topic(uid): return users_db.get(str(uid),{}).get("topic","onboarding")
 def set_topic(uid,topic): users_db.setdefault(str(uid),{})["topic"]=topic; save_users(users_db)
-
-# ===== FIX باگ 1: حافظه قدم آنبوردینگ =====
-def get_onboarding_step(uid):
-    return users_db.get(str(uid),{}).get("onboarding_step",0)
-def set_onboarding_step(uid,step):
-    users_db.setdefault(str(uid),{})["onboarding_step"]=step; save_users(users_db)
+def get_onboarding_step(uid): return users_db.get(str(uid),{}).get("onboarding_step",0)
+def set_onboarding_step(uid,step): users_db.setdefault(str(uid),{})["onboarding_step"]=step; save_users(users_db)
 def advance_onboarding(uid):
     cur=get_onboarding_step(uid)
     if cur<4: set_onboarding_step(uid,cur+1)
@@ -253,6 +247,34 @@ def build_direct_links(query, platform, user_lang="fa"):
         return links
     return [f"https://www.google.com/search?q={q_enc}"]
 
+# ===== اخبار فارکس فکتوری =====
+def get_forex_factory_news():
+    try:
+        import urllib.request, json as _json
+        url="https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+        req=urllib.request.Request(url, headers={"User-Agent":"Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            data=_json.loads(r.read().decode("utf-8", errors="ignore"))
+        today=datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+        todays=[x for x in data if x.get("date","")[:10]==today]
+        if not todays: todays=data[:15]
+        high=[x for x in todays if x.get("impact","") in ["High","Medium"]]
+        if not high: high=todays[:8]
+        lines=[]
+        for x in high[:10]:
+            time=x.get("time","?"); cur=x.get("country",""); title=x.get("title",""); impact=x.get("impact","")
+            emoji="🔴" if impact=="High" else "🟡" if impact=="Medium" else "⚪"
+            lines.append(f"{emoji} {time} | {cur} | {title} ({impact})")
+        if not lines: return None
+        return "📅 اخبار امروز فارکس فکتوری (Forex Factory):\n\n"+"\n".join(lines)+"\n\n💡 خبرهای 🔴 قرمز روی بازار خیلی تاثیر دارن، موقع اونا با اهرم بالا ترید نکن."
+    except Exception as e:
+        print("forex news error:",e); return None
+def get_forex_news_with_ai():
+    try:
+        prompt="What are today's most important Forex Factory economic calendar news? List top 8-10 with time (GMT), currency, event name, impact High/Medium. Be accurate, don't invent times. If you don't know, say you don't know. Output in Persian, short list."
+        return generate_with_fallback([prompt])
+    except: return None
+
 EXCHANGE_INFO={"fa":"صرافی The True Trade یه صرافی غیرمتمرکز (DEX) برای معاملات فیوچرز دائمی کریپتوئه، روی شبکه BNB Chain.\n\nخوبی‌هاش:\n✅ بدون احراز هویت (KYC)\n✅ پولت دست خودته\n✅ بیش از ۵۰ ارز، تا اهرم 1001x\n✅ کارمزد ثابت و پایین، بدون کارمزد فاندینگ\n✅ حالت دمو داره\n\nو اگه با کد 37681671 ثبت نام کنی، هم وارد گروه VIP ما میشی، هم کارمزد کمتری میدی.","en":"The True Trade is a decentralized exchange (DEX) for crypto perpetual futures, on BNB Chain.\n\n✅ No KYC\n✅ Non-custodial\n✅ 50+ coins, up to 1001x leverage\n✅ Flat low fee, no funding fees\n✅ Demo mode\n\nIf you register with code 37681671, you join our VIP group AND pay less fee.","ru":"The True Trade — децентрализованная биржа (DEX) для бессрочных фьючерсов, на сети BNB Chain.\n\n✅ Без KYC\n✅ Некастодиальная\n✅ 50+ монет, плечо до 1001x\n✅ Фиксированная низкая комиссия, без фандинга\n✅ Демо-режим\n\nЕсли зарегистрируешься с кодом 37681671, попадешь в VIP-группу И будешь платить меньше комиссии."}
 def is_exchange_question(msg):
     m=msg.lower(); return any(k in m for k in ["این چه صرافیه","این صرافی چیه","صرافی چیه","truetrade چیه","true trade چیه","the true trade چیه","what is this exchange","what is truetrade","what is true trade","что это за биржа","что такое truetrade","что такое the true trade"])
@@ -262,6 +284,9 @@ def is_translation_request(msg):
     if any(k in m for k in ["ترجمه کن","ترجمش کن","به انگلیسی بگو","به روسی بگو","به فارسی بگو","به ترکی بگو","به عربی بگو","به آلمانی بگو","translate","переведи","çevir"]): return True
     if any(k in m for k in ["او گفت","اون گفت","بهش بگو","بهش بگو که","tell him","tell her","скажи ему","скажи ей"]): return True
     return False
+def is_exit_translator(msg):
+    m=(msg or "").lower().strip()
+    return any(k in m for k in ["خاموش","بسه","تموم","تمام","برگرد","خروج","گپ بزنیم","مثل قبل","stop translating","turn off"])
 def detect_target_lang_from_translate_msg(msg):
     m=msg.lower()
     if any(k in m for k in ["به انگلیسی","to english","in english","на английский","ingilizce"]): return "en"
@@ -276,33 +301,65 @@ def detect_target_lang_from_translate_msg(msg):
     if any(k in m for k in ["به ازبکی","to uzbek"]): return "uz"
     return None
 def get_translator_reply(user_id,user_msg):
+    # مترجم دیگه قفل نیست، فقط یه کار لحظه‌ایه. هیچ set_topic اینجا نیست
     m=user_msg.lower()
+    if is_exit_translator(user_msg):
+        users_db.get(str(user_id),{}).pop("translate_target",None); users_db.get(str(user_id),{})["translator_soft"]=False; save_users(users_db)
+        return "باشه، مترجم رو خاموش کردم 😊 حالا مثل قبل باهام گپ بزن. چی کمکت کنم؟"
     if any(k in m for k in ["مترجم من باش","مترجم باش","be my translator","будь переводчиком"]):
-        set_topic(user_id,"translator"); target=detect_target_lang_from_translate_msg(user_msg)
+        target=detect_target_lang_from_translate_msg(user_msg)
         if target:
-            users_db.setdefault(str(user_id),{})["translate_target"]=target; save_users(users_db)
+            users_db.setdefault(str(user_id),{})["translate_target"]=target; users_db[str(user_id)]["translator_soft"]=True; save_users(users_db)
             lang_names={"en":"انگلیسی / English","ru":"روسی / Русский","fa":"فارسی","tr":"ترکی / Türkçe","ar":"عربی","de":"آلمانی"}
-            return f"باشه 😊 از الان مترجمتم.\nتو به فارسی بگو، من به {lang_names.get(target,target)} ترجمه می‌کنم که بفرستی براش.\n\nهر وقت خواستی تمومش کنی بگو «مترجم رو خاموش کن».\n\nحالا بگو چی می‌خوای بهش بگی؟"
+            return f"باشه 😊 از الان مترجمتم.\nتو به فارسی بگو، من به {lang_names.get(target,target)} ترجمه می‌کنم که بفرستی براش.\n\nهر وقت خواستی تمومش کنی بگو «خاموش» یا «بسه».\n\nحالا بگو چی می‌خوای بهش بگی؟"
         return "باشه 😊 از الان مترجمتم.\nبگو به چه زبانی ترجمه کنم؟ مثلاً بگو «به روسی ترجمه کن» و بعد هر چی گفتی رو برات ترجمه می‌کنم."
-    if any(k in m for k in ["مترجم رو خاموش","ترجمه رو خاموش","stop translating","stop translator","خاموش کن مترجم"]):
-        set_topic(user_id,"onboarding"); users_db.get(str(user_id),{}).pop("translate_target",None); save_users(users_db); return "باشه، مترجم رو خاموش کردم 😊 حالا مثل قبل باهام گپ بزن."
     target=detect_target_lang_from_translate_msg(user_msg)
     if not target: target=users_db.get(str(user_id),{}).get("translate_target","en")
     text_to_translate=user_msg
     for prefix in ["این جمله را به انگلیسی بگو:","این جمله را به انگلیسی بگو","این جمله رو به انگلیسی بگو","به انگلیسی بگو","به روسی بگو","به فارسی بگو","به ترکی بگو","ترجمه کن","ترجمش کن","translate this","translate","переведи","بهش بگو","بهش بگو که","او گفت:","اون گفت:"]:
         if prefix in text_to_translate: text_to_translate=text_to_translate.replace(prefix,"").strip(); break
     if not text_to_translate or len(text_to_translate)<2:
-        users_db.setdefault(str(user_id),{})["translate_target"]=target; save_users(users_db); set_topic(user_id,"translator")
+        users_db.setdefault(str(user_id),{})["translate_target"]=target; save_users(users_db)
         lang_names={"en":"انگلیسی","ru":"روسی","fa":"فارسی","tr":"ترکی"}
         return f"باشه، از الان هر چی بگی رو به {lang_names.get(target,target)} ترجمه می‌کنم 😊\nبگو چی می‌خوای بگی؟"
     target_name={"en":"English","ru":"Russian","fa":"Persian (Farsi)","tr":"Turkish","ar":"Arabic","de":"German","fr":"French","es":"Spanish","kk":"Kazakh","uz":"Uzbek"}.get(target,"English")
     try:
         prompt=f"You are a professional translator. Translate to {target_name}. Output ONLY translation, keep tone, keep emojis. Text:\n{text_to_translate}\nTranslation in {target_name}:"
         translated=generate_with_fallback([prompt]).strip()
-        if get_topic(user_id)=="translator" or "بهش بگو" in m or "او گفت" in m:
-            return f"📝 تو گفتی:\n{text_to_translate}\n\n🌐 ترجمه ({target_name}):\n{translated}\n\n👆 این رو کپی کن بفرست براش"
-        add_to_history(user_id,"user",user_msg); add_to_history(user_id,"bot",translated); return translated
+        return f"📝 تو گفتی:\n{text_to_translate}\n\n🌐 ترجمه ({target_name}):\n{translated}\n\n👆 این رو کپی کن بفرست براش"
     except Exception as e: print("translate error:",e); return None
+
+# ===== مغز جدید: بدون قفل، هر لحظه هر کاری =====
+def detect_intent_now(msg, has_photo=False):
+    m=(msg or "").lower().strip()
+    if not m and not has_photo: return "chat"
+    if any(k in m for k in ["فارکس فکتوری","forex factory","اخبار امروز","اخبار فارکس","تقویم اقتصادی","economic calendar","خبر امروز","اخبار بازار","اخبار روز","news today"]):
+        return "forex_news"
+    if any(k in m for k in ["لینک بده","لینک بفرست","لینکشو بده","لینک میخوام","لینک خرید","لینک مستقیم","از کجا بخرم","give link","send link","link please","لپ تاپ","لپتاپ","گوشی بخرم"]):
+        if m.startswith("ترجمه") or "ترجمه کن:" in m or "به روسی بگو" in m or "به انگلیسی بگو" in m:
+            return "translate_text"
+        return "link_request"
+    if has_photo:
+        if any(k in m for k in ["ترجمه","translate","به انگلیسی","به روسی","به فارسی","переведи"]):
+            return "translate_photo"
+        if is_photo_edit_request(msg):
+            return "edit_photo"
+        if "ثبت" in m or "کد معرف" in m:
+            return "register_photo"
+        return "photo_ask"
+    if any(k in m for k in ["ترجمه کن","ترجمش کن","به انگلیسی بگو","به روسی بگو","به فارسی بگو","به ترکی بگو","به عربی بگو","translate","переведи","بهش بگو","او گفت","اون گفت","مترجم","translator"]):
+        if any(k in m for k in ["خاموش","بسه","تموم","برگرد","خروج"]):
+            return "chat"
+        return "translate_text"
+    if any(k in m for k in ["سیگنال","signal","ترید","بازار","بیت","اتریوم","لوریج"]):
+        return "trade_talk"
+    if any(k in m for k in ["ثبت نام","register","گروه","عضو شم"]):
+        return "register_talk"
+    if any(k in m for k in ["پیش نمایش","preview","آمار گروه"]):
+        return "preview"
+    if is_voice_request(msg):
+        return "voice_request"
+    return "chat"
 
 def detect_topic(msg):
     m=msg.lower()
@@ -384,50 +441,27 @@ def get_chat_prompt(lang,user_name,status,history_text,user_msg,preview_detail,t
 def is_colloquial_msg(msg):
     m=msg.lower(); return any(s in m for s in ["داداش","رفیق","جون","مخلصم","چاکریم","حله","اوکی","دمت گرم","چی کاره","چه خبر","خوبی","یه","می‌خوام","نمی‌خوام","برو بابا","ولش","عشقی","yo","bro","dude","чувак","бро","давай","короче"])
 
-# ===== FIX باگ 1: get_chat_reply کامل بازنویسی شد =====
 def get_chat_reply(user_id,user_name,user_msg):
     detected=detect_lang_from_msg(user_msg)
     if detected: set_lang(user_id,detected); lang=detected
     else: lang=get_lang(user_id)
     status=users_db.get(str(user_id),{}).get("status","not_registered"); hist=chat_history.get(int(user_id),[]); has_history=len(hist)>0; is_first=not has_history; history_text=get_history_text(user_id,limit=50)
-    new_topic=detect_topic(user_msg); last_topic=get_topic(user_id)
-    if new_topic=="no_trade": set_topic(user_id,"no_trade"); topic="no_trade"
-    elif new_topic=="english_general": set_topic(user_id,"english_general"); topic="english_general"
-    elif new_topic:
-        if last_topic in ["no_trade","english_general"] and new_topic=="trade": topic=last_topic
-        else: set_topic(user_id,new_topic); topic=new_topic
-    else: topic=last_topic
-
+    tmp_topic=detect_topic(user_msg) or "chat"; topic=tmp_topic
     onboarding_note=""
-    if topic in ["onboarding","casual"]:
+    if get_onboarding_step(user_id)<4 and topic in ["onboarding","casual",None,"chat"]:
         step=get_onboarding_step(user_id)
-        if step==0:
-            set_onboarding_step(user_id,1); step=1
-        elif step==1 and len(user_msg.strip())>1:
-            if user_msg.strip().lower() not in ["سلام","hi","hello","привет","سلامم"]:
-                advance_onboarding(user_id); step=2
-        elif step==2 and len(user_msg.strip())>1:
-            if user_msg.strip().lower() not in ["سلام","hi","hello"]:
-                advance_onboarding(user_id); step=3
-        elif step==3 and len(user_msg.strip())>1:
-            advance_onboarding(user_id); step=4
-        step_instructions={
-            1:"STEP IS 1: Ask ONLY: 'بگو ببینم، تو از کجا پیدام کردی؟ یکی معرفی کرده اومدی یا خودت پیدام کردی؟' DO NOT ask anything else.",
-            2:"STEP IS 2: User ALREADY answered how they found you. NEVER ask that again. Now ask ONLY about job: 'راستی تو به چه کاری مشغولی؟ شغلت چیه؟'",
-            3:"STEP IS 3: User ALREADY answered job. NEVER ask job or how they found you again. Now ask ONLY: 'تا حالا به شغل دوم و درآمد بیشتر فکر کردی؟'",
-            4:"STEP IS 4: Onboarding DONE. NEVER ask how they found you, job, or second income again. Just chat normally."
-        }
-        onboarding_note="\nONBOARDING STATE - HARD RULE: "+step_instructions.get(step,step_instructions[4])+"\n"
-
-    preview_detail="" if topic in ["onboarding","casual","no_trade","english_general","translator"] else (get_preview_text(lang,detailed=False) or "")
-    if topic=="free_signal_talk": preview_detail=""
+        if step==0: set_onboarding_step(user_id,1); step=1
+        elif step in [1,2,3] and len(user_msg.strip())>1 and user_msg.strip().lower() not in ["سلام","hi","hello"]:
+            advance_onboarding(user_id); step=min(step+1,4)
+        step_instructions={1:"STEP IS 1: Ask ONLY: 'بگو ببینم، تو از کجا پیدام کردی؟'",2:"STEP IS 2: User ALREADY answered. NEVER ask that again. Ask ONLY about job.",3:"STEP IS 3: Ask ONLY: 'تا حالا به شغل دوم فکر کردی؟'",4:"STEP IS 4: Onboarding DONE. Just chat normally."}
+        onboarding_note="\nONBOARDING STATE: "+step_instructions.get(step,step_instructions[4])+"\n"
+    preview_detail="" if topic in ["onboarding","casual"] else (get_preview_text(lang,detailed=False) or "")
     prompt=get_chat_prompt(lang,user_name,status,history_text,user_msg,preview_detail,topic,is_colloquial_msg(user_msg),has_history=has_history)
     if onboarding_note: prompt=prompt+onboarding_note
     try:
         reply=generate_with_fallback([prompt]).strip(); reply=clean_all_replies(reply,is_first_message=is_first)
-        # فیلتر نهایی: اگه جمینای باز هم سوال تکراری پرسید، حذفش کن
         if get_onboarding_step(user_id)>=2 and "از کجا پیدام کردی" in reply:
-            reply="آهان، دمت گرم 😊 راستی تو به چه کاری مشغولی؟ شغلت چیه؟ درس می‌خونی یا کار می‌کنی؟"
+            reply="آهان، دمت گرم 😊 راستی تو به چه کاری مشغولی؟"
         add_to_history(user_id,"user",user_msg); add_to_history(user_id,"bot",reply); return reply
     except Exception as e: print("chat error:",e); return None
 
@@ -716,23 +750,53 @@ async def handle_callback(update:Update,context:ContextTypes.DEFAULT_TYPE):
         else: await send_as_status(item,user,context,choice)
         return
 
+# ===== handle_text جدید - بدون قفل =====
 async def handle_text(update:Update,context:ContextTypes.DEFAULT_TYPE):
     user=update.effective_user; msg=update.message.text or ""
     if is_banned(user.id): await update.message.reply_text(TEXTS["fa"]["banned_msg"]); return
     if is_admin(update):
-        # ادمین: اگه سیگنال فرستاد، بپرس چیه
         if len(msg)>=10 and (re.search(r'\d',msg) or "TP" in msg.upper() or "LONG" in msg.upper() or "SHORT" in msg.upper()):
             pending_items[user.id]={"type":"text","text":msg}
             await update.message.reply_text("این چیه؟ 👇",reply_markup=get_choice_keyboard()); return
         await update.message.reply_text("سیگنالت رو بفرست تا بفرستم توی گروه ✅"); return
 
-    # مترجم
-    if is_translation_request(msg) or get_topic(user.id)=="translator":
-        r=get_translator_reply(user.id,msg)
-        if r:
-            await update.message.reply_text(r); return
+    intent=detect_intent_now(msg, has_photo=False)
 
-    # دکمه‌ها
+    if intent=="forex_news":
+        await update.message.reply_text("⏳ دارم اخبار امروز فارکس فکتوری رو چک می‌کنم...")
+        news=get_forex_factory_news()
+        if not news: news=get_forex_news_with_ai()
+        if news: await update.message.reply_text(news)
+        else: await update.message.reply_text("نتونستم الان اخبار رو بگیرم 😅 یه دقیقه دیگه دوباره بگو «اخبار فارکس»")
+        return
+
+    if intent=="link_request":
+        platform=detect_link_platform(msg); lang=get_lang(user.id)
+        query=msg
+        for w in ["لینک بده","لینک بفرست","لینکشو بده","لینک میخوام","لینک رو بده","give link","send link"]: query=query.replace(w,"")
+        query=query.strip() or "لپ تاپ"
+        links=build_direct_links(query,platform,lang)
+        if lang=="fa": txt="بفرما، لینک مستقیم 👇\n\n"+"\n".join(links)+"\n\nبعدش اگه خواستی برگردیم به ترجمه، فقط بگو «ترجمه کن» 😊"
+        elif lang=="ru": txt="Вот прямая ссылка 👇\n\n"+"\n".join(links)
+        else: txt="Here is direct link 👇\n\n"+"\n".join(links)
+        await update.message.reply_text(txt); return
+
+    if intent=="translate_text":
+        if "مترجم بین" in msg or "مترجم من باش" in msg or "مترجم باش" in msg:
+            users_db.setdefault(str(user.id),{})["translator_soft"]=True; save_users(users_db)
+            await update.message.reply_text("باشه 😊 از الان مترجم بین شما دو نفرم.\nتو بگو، من ترجمه می‌کنم که بفرستی براش.\n\nوسطش هر چی دیگه خواستی (لینک، اخبار، بازار) بگو، انجام میدم، بعدش بگو «ترجمه کن» دوباره برمی‌گردیم به ترجمه.\n\nحالا بگو چی می‌خوای بهش بگی؟")
+            return
+        r=get_translator_reply(user.id,msg)
+        if r: await update.message.reply_text(r); return
+        # اگه مترجم نرم روشنه و جمله ساده فرستاد، ترجمه‌اش کن
+        if users_db.get(str(user.id),{}).get("translator_soft"):
+            target=users_db.get(str(user.id),{}).get("translate_target","en")
+            target_name={"en":"English","ru":"Russian","fa":"Persian","tr":"Turkish"}.get(target,"English")
+            try:
+                translated=generate_with_fallback([f"Translate to {target_name}. Output ONLY translation. Text:\n{msg}"])
+                await update.message.reply_text(f"🌐 {translated.strip()}\n\n👆 کپی کن بفرست براش"); return
+            except: pass
+
     if is_hide_buttons_request(msg): hide_buttons_for(user.id); await update.message.reply_text("باشه، دکمه‌ها رو برداشتم 😊 هر وقت گفتی برمی‌گردونم."); return
     if is_show_buttons_request(msg): show_buttons_for(user.id); await update.message.reply_text("باشه، دکمه‌ها برگشتن 😊"); return
     if is_who_are_you(msg):
@@ -743,43 +807,31 @@ async def handle_text(update:Update,context:ContextTypes.DEFAULT_TYPE):
         return
     if is_exchange_question(msg):
         lang=get_lang(user.id); await update.message.reply_text(EXCHANGE_INFO.get(lang,EXCHANGE_INFO["fa"])); return
-    if is_preview_request(msg):
+    if intent=="preview":
         await preview_command(update,context); return
-    if is_any_link_request(msg):
-        platform=detect_link_platform(msg); lang=get_lang(user.id)
-        # جدا کردن موضوع جستجو از جمله
-        query=msg
-        for w in ["لینک بده","لینک بفرست","لینکشو بده","لینک میخوام","لینک رو بده","give link","send link","link please"]: query=query.replace(w,"")
-        query=query.strip() or "laptop"
-        links=build_direct_links(query,platform,lang)
-        if lang=="fa": txt="بفرما، لینک مستقیم برات پیدا کردم 👇\n\n"+"\n".join(links)
-        elif lang=="ru": txt="Вот, нашел прямую ссылку для тебя 👇\n\n"+"\n".join(links)
-        else: txt="Here is direct link for you 👇\n\n"+"\n".join(links)
-        await update.message.reply_text(txt); return
-
-    # ویس خواستن؟ - FIX باگ 2: اگه ویس ساخته نشد، فقط متن رو بفرست، هیچ توضیحی نده
-    if is_voice_request(msg):
-        # متن جواب رو بگیر
+    if intent=="voice_request":
         clean_msg=msg
-        for p in ["ویس بفرست","ویس بگو","با صدا بگو","صدات رو بفرست","صوتی بگو","با ویس","send voice"]: clean_msg=clean_msg.replace(p,"")
-        clean_msg=clean_msg.strip()
-        if not clean_msg: clean_msg="سلام، چطوری؟"
+        for p in ["ویس بفرست","ویس بگو","با صدا بگو","صدات رو بفرست","صوتی بگو","با ویس"]: clean_msg=clean_msg.replace(p,"")
+        clean_msg=clean_msg.strip() or "سلام، چطوری؟"
         reply=get_chat_reply(user.id,user.first_name,clean_msg)
         if not reply: reply="نمی‌دونم چی بگم 😅"
         ok=await send_voice_reply(context,update.effective_chat.id,reply,lang=get_lang(user.id))
-        if not ok:
-            await update.message.reply_text(reply)
+        if not ok: await update.message.reply_text(reply)
         return
-
-    # گفتگوی عادی
+    if is_image_request(msg):
+        await update.message.reply_text("🎨 دارم می‌سازم... ⏳")
+        img=await generate_image_bytes(msg)
+        if img: await context.bot.send_photo(chat_id=update.effective_chat.id,photo=BytesIO(img),caption="بفرما 😊")
+        else: await update.message.reply_text("نتونستم عکس رو بسازم 😅 دوباره با یه جمله واضح‌تر بگو")
+        return
+    if intent in ["trade_talk","register_talk","chat"]:
+        reply=get_chat_reply(user.id,user.first_name,msg)
+        if reply: await update.message.reply_text(reply)
+        return
     reply=get_chat_reply(user.id,user.first_name,msg)
-    if reply is None:
-        await update.message.reply_text("یه مشکلی پیش اومد، دوباره بگو 😅"); return
-    await update.message.reply_text(reply)
-    # اگه توی مرحله‌ای هستیم که باید ویس هم بفرسته؟ نه - فقط متن، تا اسپم نشه
-    # اگه کاربر قبلا ویس خواسته بود، ویس هم بفرست
-    # برای سادگی: فقط متن
+    if reply: await update.message.reply_text(reply)
 
+# ===== handle_photo جدید - هر عکس جدا =====
 async def handle_photo(update:Update,context:ContextTypes.DEFAULT_TYPE):
     user=update.effective_user; msg=update.message.caption or ""
     if is_banned(user.id): await update.message.reply_text(TEXTS["fa"]["banned_msg"]); return
@@ -787,39 +839,37 @@ async def handle_photo(update:Update,context:ContextTypes.DEFAULT_TYPE):
     if is_admin(update):
         pending_items[user.id]={"type":"photo","photo_id":photo_id,"caption":msg}
         await update.message.reply_text("این چیه؟ 👇",reply_markup=get_choice_keyboard()); return
-
-    # ثبت‌نام؟ اسکرین‌شات؟
-    if "ثبت" in msg or "کد معرف" in msg or is_register_help_request(msg) or get_topic(user.id)=="register":
+    intent=detect_intent_now(msg, has_photo=True)
+    if intent=="translate_photo":
+        await update.message.reply_text("⏳ دارم عکس رو می‌خونم و ترجمه می‌کنم...")
         try:
             file=await context.bot.get_file(photo_id); photo_bytes=await file.download_as_bytearray()
             img_part=genai.types.Part.from_bytes(data=bytes(photo_bytes),mime_type="image/jpeg")
-            raw=generate_with_fallback([PROMPT_REGISTER_SCREEN,img_part])
-            await update.message.reply_text(raw)
-            return
-        except Exception as e: await update.message.reply_text(f"عکست رو دیدم، ولی نتونستم بخونمش. یه عکس واضح‌تر از بخش کد معرف بفرست. ({e})"); return
-
-    # ادیت عکس؟
-    if msg and is_photo_edit_request(msg):
+            target=detect_target_lang_from_translate_msg(msg) or users_db.get(str(user.id),{}).get("translate_target","en")
+            target_name={"en":"English","ru":"Russian","fa":"Persian","tr":"Turkish"}.get(target,"English")
+            translated=generate_with_fallback([f"Read all text in this screenshot and translate it to {target_name}. Output ONLY translation.",img_part])
+            await update.message.reply_text(f"🌐 ترجمه عکس ({target_name}):\n{translated.strip()}"); return
+        except Exception as e:
+            await update.message.reply_text("نتونستم عکس رو بخونم 😅 یه عکس واضح‌تر بفرست."); return
+    if intent=="edit_photo":
         await update.message.reply_text("⏳ دارم ادیت می‌کنم...")
         try:
             file=await context.bot.get_file(photo_id); photo_bytes=await file.download_as_bytearray()
             out=await edit_image_bytes(photo_bytes,msg)
-            if out:
-                await context.bot.send_photo(chat_id=update.effective_chat.id,photo=BytesIO(out),caption="بفرما 😊")
-            else:
-                await update.message.reply_text("نتونستم ادیت کنم، عکس رو دوباره با همون جمله بفرست")
-        except Exception as e: await update.message.reply_text("نتونستم ادیت کنم، عکس رو دوباره با همون جمله بفرست")
+            if out: await context.bot.send_photo(chat_id=update.effective_chat.id,photo=BytesIO(out),caption="بفرما 😊")
+            else: await update.message.reply_text("نتونستم ادیت کنم، عکس رو دوباره با همون جمله بفرست")
+        except: await update.message.reply_text("نتونستم ادیت کنم، عکس رو دوباره با همون جمله بفرست")
         return
-
-    # اگه کپشن خالیه، بپرس چی کار کنه
-    if not msg:
-        await update.message.reply_text("عکست رسید 😊 بگو چجوری ادیتش کنم؟ مثلا بگو «پس‌زمینه رو دریا کن»")
-        # ذخیره برای پیام بعدی؟ ساده: توی pending بذار
-        pending_items[user.id]={"type":"photo","photo_id":photo_id,"caption":""}
+    if intent=="register_photo":
+        try:
+            file=await context.bot.get_file(photo_id); photo_bytes=await file.download_as_bytearray()
+            img_part=genai.types.Part.from_bytes(data=bytes(photo_bytes),mime_type="image/jpeg")
+            raw=generate_with_fallback([PROMPT_REGISTER_SCREEN,img_part])
+            await update.message.reply_text(raw); return
+        except: await update.message.reply_text("عکست رو دیدم، یه عکس واضح‌تر از بخش کد معرف بفرست."); return
+    if intent=="photo_ask":
+        await update.message.reply_text("عکست رسید 😊 بگو باهاش چی کار کنم؟ ترجمه کنم؟ ادیت کنم؟ یا در مورد ثبت‌نامته؟")
         return
-    # کپشن داره ولی ادیت نیست -> گفتگو
-    reply=get_chat_reply(user.id,user.first_name,msg)
-    if reply: await update.message.reply_text(reply)
 
 async def handle_voice(update:Update,context:ContextTypes.DEFAULT_TYPE):
     user=update.effective_user
@@ -828,10 +878,8 @@ async def handle_voice(update:Update,context:ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("ویس ادمین رو به متن تبدیل نمی‌کنم، متن بفرست."); return
     await update.message.reply_text(t(user.id,"listening"))
     try:
-        # دانلود ویس
         voice_file=await update.message.voice.get_file()
         buf=BytesIO(); await voice_file.download_to_memory(buf); buf.seek(0)
-        # تلاش برای تبدیل ویس به متن با جمینای
         try:
             audio_part=genai.types.Part.from_bytes(data=buf.getvalue(),mime_type="audio/ogg")
             transcribed=generate_with_fallback(["Transcribe this voice message exactly, in its original language. Output ONLY transcription.",audio_part])
@@ -840,10 +888,25 @@ async def handle_voice(update:Update,context:ContextTypes.DEFAULT_TYPE):
             print("voice transcribe error:",e); user_text=""
         if not user_text:
             await update.message.reply_text("صدات رو واضح نشنیدم 😅 دوباره بگو؟"); return
-        # حالا مثل پیام متنی رفتار کن
+        # ویس هم مثل متن: هر لحظه تشخیص بده چی می‌خواد
+        intent=detect_intent_now(user_text, has_photo=False)
+        if intent=="forex_news":
+            news=get_forex_factory_news() or get_forex_news_with_ai()
+            if news: await update.message.reply_text(news)
+            else: await update.message.reply_text("نتونستم اخبار رو بگیرم 😅")
+            return
+        if intent=="link_request":
+            platform=detect_link_platform(user_text); lang=get_lang(user.id)
+            links=build_direct_links(user_text,platform,lang)
+            await update.message.reply_text("بفرما 👇\n\n"+"\n".join(links)); return
+        if intent=="translate_text":
+            r=get_translator_reply(user.id,user_text)
+            if r:
+                ok=await send_voice_reply(context,update.effective_chat.id,r,lang=get_lang(user.id))
+                if not ok: await update.message.reply_text(f"🎤 شنیدم گفتی: {user_text}\n\n{r}")
+                return
         reply=get_chat_reply(user.id,user.first_name,user_text)
         if not reply: reply="شنیدم، ولی نفهمیدم چی گفتی 😅 دوباره بگو؟"
-        # FIX باگ 2: اول ویس رو تلاش کن، اگه نشد فقط متن رو بفرست، هیچوقت نگو "نتونستم بسازم"
         ok=await send_voice_reply(context,update.effective_chat.id,reply,lang=get_lang(user.id))
         if not ok:
             await update.message.reply_text(reply)
@@ -857,16 +920,13 @@ async def on_chat_join_request(update:Update,context:ContextTypes.DEFAULT_TYPE):
         try: await context.bot.decline_chat_join_request(chat_id=GROUP_ID,user_id=user.id)
         except: pass
         return
-    # اگه ثبت‌نام تایید شده، قبول کن
     if users_db.get(str(user.id),{}).get("status")=="approved_by_admin":
         try: await context.bot.approve_chat_join_request(chat_id=GROUP_ID,user_id=user.id)
         except: pass
     else:
         try: await context.bot.send_message(chat_id=user.id,text=t(user.id,"need_register",link=REFERRAL_LINK))
         except: pass
-
 async def on_chat_member(update:Update,context:ContextTypes.DEFAULT_TYPE):
-    # کاربر از گروه رفت / حذف شد
     try:
         res=update.chat_member
         if res.new_chat_member.status in ["left","kicked","banned"]:
@@ -895,7 +955,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,handle_text))
     app.add_handler(ChatJoinRequestHandler(on_chat_join_request))
     app.add_handler(ChatMemberHandler(on_chat_member,ChatMemberHandler.CHAT_MEMBER))
-    print("Rahavard is running... ✅ FIXED: no repeat question, no voice error msg")
+    print("Rahavard is running... ✅ STATELESS - no lock, translator soft, forex news, voice fixed")
     app.run_polling(drop_pending_updates=True)
 
 if __name__=="__main__":

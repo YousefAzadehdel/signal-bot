@@ -73,13 +73,11 @@ def save_group_stats(data):
         with open(STATS_FILE, "w") as f: json.dump(data, f, ensure_ascii=False)
     except: pass
 
-# ===== حافظه 100 چت - ذخیره در فایل =====
 def load_history():
     try:
         if os.path.exists(HISTORY_FILE):
             with open(HISTORY_FILE, "r", encoding="utf-8") as f:
                 d = json.load(f)
-                # کلیدها رو int کن
                 return {int(k): v for k, v in d.items()}
     except Exception as e:
         print("load history error:", e)
@@ -115,9 +113,7 @@ last_signal_pair = {"pair": "?", "direction": ""}
 
 def add_to_history(user_id, role, text):
     chat_history.setdefault(int(user_id), []).append({"role": role, "text": text})
-    # نگه داشتن 100 پیام آخر = 50 رفت و برگشت
     if len(chat_history[int(user_id)]) > 100:
-        # 50 تای اول رو خلاصه کن و نگه دار
         old = chat_history[int(user_id)][:50]
         old_text = "\n".join([f"{h['role']}: {h['text'][:300]}" for h in old])
         try:
@@ -390,7 +386,6 @@ Then add these 2 lines:
 IF image is too dark/blurry -> Ask for clearer screenshot cropped on Referral field.
 """
 
-# ===== پرامپت جدید - لحن مثل Meta AI، جامع و کاربردی، سه زبانه =====
 def get_chat_prompt(lang, user_name, status, history_text, user_msg, preview_detail, topic, is_colloquial, has_history=False):
     lang_name = {"fa": "Persian (Farsi)", "en": "English", "ru": "Russian"}.get(lang, "Persian")
     lang_rule = f"\n- LANGUAGE LOCK - CRITICAL: User is speaking {lang_name}. You MUST reply ONLY in {lang_name}. NEVER mix languages. If user switches language, switch with them.\n"
@@ -406,7 +401,7 @@ def get_chat_prompt(lang, user_name, status, history_text, user_msg, preview_det
         topic_rule = f"\n- USER IS IN REGISTRATION FLOW. Now you CAN talk about registration.\n- Referral link: {REFERRAL_LINK}\n- Steps: 1) Register with link 2) Come back and press 'I Registered' 3) Admin checks.\n- If user is stuck, ask for screenshot: 'Send screenshot, let me see where you are stuck'.\n"
     else:
         topic_rule = "- Topic is trade. You can talk about trading, but be complete and practical."
-    style_rule = "- STYLE - LIKE META AI: Warm, human, conversational, like a smart friend on Telegram. No robotic, dry sentences. No cliche phrases like 'As an AI'. Vary sentence length. Use 'we / let's' naturally. Be familiar without being over-familiar." if True else ""
+    style_rule = "- STYLE - LIKE META AI: Warm, human, conversational, like a smart friend on Telegram. No robotic, dry sentences. No cliche phrases like 'As an AI'. Vary sentence length. Use 'we / let's' naturally. Be familiar without being over-familiar."
     return f"""You are Rahavard, a friendly human-like assistant on Telegram. Your name is Rahavard.
 USER INFO:
 - Name: {user_name}
@@ -628,7 +623,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if users_db.get(uid, {}).get("lang"):
         lang = get_lang(user.id)
-        # اگر سابقه داره، یادآوری کن
         summ = chat_summaries.get(uid, "")
         hist = chat_history.get(user.id, [])
         if hist or summ:
@@ -992,6 +986,53 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("voice error:", e)
         await update.message.reply_text("ویس رو نتونستم گوش کنم 😅 یه بار دیگه بفرست، یا متنی بنویس")
 
+# ===== جدید: ویدیو + کلیپ کوتاه (ویدیو‌نوت) =====
+async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if is_banned(user.id) and not is_admin(update):
+        await update.message.reply_text(TEXTS["fa"]["banned_msg"]); return
+    await update.message.reply_text(t(user.id, "analyzing"))
+    try:
+        video = update.message.video or update.message.video_note
+        if not video:
+            await update.message.reply_text("ویدیو رو پیدا نکردم 😅 دوباره بفرست"); return
+        if getattr(video, "duration", 0) and video.duration > 120:
+            await update.message.reply_text("ویدیوت طولانیه 😅 فقط ۲ دقیقه اولش رو بررسی می‌کنم...")
+        file = await context.bot.get_file(video.file_id)
+        video_bytes = await file.download_as_bytearray()
+        video_part = genai.types.Part.from_bytes(data=bytes(video_bytes), mime_type="video/mp4")
+        caption = (update.message.caption or "").strip()
+        history_text = get_history_text(user.id, limit=12)
+        lang = get_lang(user.id)
+        lang_name = {"fa": "Persian", "en": "English", "ru": "Russian"}.get(lang, "Persian")
+        user_q = caption if caption else "این ویدیو چیه؟ نظرت چیه؟"
+        prompt = f"""You are Rahavard, a friendly Telegram assistant. Style like Meta AI: warm, human, useful.
+User sent a VIDEO. Watch it CAREFULLY - both what you SEE and what you HEAR.
+- Language: Reply ONLY in {lang_name}.
+- NEVER greet again. Go directly to answer.
+- If caption is a question, answer THAT question about the video, COMPLETELY: direct answer + why + how + example + next step, about 8-10 lines.
+- If no caption, first say in 1-2 lines what is happening in the video (who/what, what is said), then give a logical, useful comment / tip / opinion.
+- If it's a trading chart / signal / screen recording, explain it simply and practically.
+- If it's funny / food / car / animal / selfie / vlog, react like a human friend, be funny but logical, ask ONE follow-up question.
+- If video is dark / no sound / unclear, say so honestly, don't guess.
+CONVERSATION HISTORY:
+{history_text}
+USER CAPTION / QUESTION:
+{user_q}
+Reply in {lang_name} ONLY:"""
+        raw = generate_with_fallback([prompt, video_part])
+        cleaned = clean_all_replies(raw, is_first_message=False)
+        add_to_history(user.id, "user", f"[ویدیو فرستاد: {user_q}]")
+        add_to_history(user.id, "bot", cleaned)
+        if is_admin(update):
+            pending_items[user.id] = {"type": "text", "text": f"[ویدیو] {cleaned}"}
+            await update.message.reply_text(f"{cleaned}\n\nاین چیه؟ 👇", reply_markup=get_choice_keyboard())
+            return
+        await update.message.reply_text(cleaned)
+    except Exception as e:
+        print("video error:", e)
+        await update.message.reply_text("ویدیو رو دیدم ولی نتونستم خوب بخونمش 😅 یه کلیپ کوتاه‌تر و واضح‌تر بفرست یا بگو توی ویدیو چی میگی؟")
+
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query; await query.answer()
     data = query.data; user = update.effective_user
@@ -1112,6 +1153,8 @@ def main():
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.AUDIO, handle_voice))
+    app.add_handler(MessageHandler(filters.VIDEO, handle_video))
+    app.add_handler(MessageHandler(filters.VIDEO_NOTE, handle_video))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     if app.job_queue:
         app.job_queue.run_repeating(send_reminders, interval=3600, first=10)

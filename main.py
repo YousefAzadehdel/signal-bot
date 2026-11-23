@@ -321,12 +321,40 @@ def get_register_reply_in_lang(lang, status):
 EXCHANGE_INFO={"fa":"صرافی The True Trade یه صرافی غیرمتمرکز (DEX) برای معاملات فیوچرز دائمی کریپتوئه، روی شبکه BNB Chain.\n\nخوبی‌هاش:\n✅ بدون احراز هویت (KYC)\n✅ پولت دست خودته\n✅ بیش از ۵۰ ارز، تا اهرم 1001x\n✅ کارمزد ثابت و پایین، بدون کارمزد فاندینگ\n✅ حالت دمو داره\n\nو اگه با کد 37681671 ثبت نام کنی، هم وارد گروه VIP ما میشی، هم کارمزد کمتری میدی.","en":"The True Trade is a decentralized exchange (DEX) for crypto perpetual futures, on BNB Chain.\n\n✅ No KYC\n✅ Non-custodial\n✅ 50+ coins, up to 1001x leverage\n✅ Flat low fee, no funding fees\n✅ Demo mode\n\nIf you register with code 37681671, you join our VIP group AND pay less fee.","ru":"The True Trade — децентрализованная биржа (DEX) для бессрочных фьючерсов, на сети BNB Chain.\n\n✅ Без KYC\n✅ Некастодиальная\n✅ 50+ монет, плечо до 1001x\n✅ Фиксированная низкая комиссия, без фандинга\n✅ Демо-режим\n\nЕсли зарегистрируешься с кодом 37681671, попадешь в VIP-группу И будешь платить меньше комиссии."}
 def is_exchange_question(msg):
     m=msg.lower(); return any(k in m for k in ["این چه صرافیه","این صرافی چیه","صرافی چیه","truetrade چیه","true trade چیه","the true trade چیه","what is this exchange","what is truetrade","what is true trade","что это за биржа","что такое truetrade","что такое the true trade"])
+
+# ===== فیکس مترجم: فرق بین «مترجمم شو» و «اینو ترجمه کن» =====
+def is_translator_role_request(msg):
+    if not msg: return False
+    m=msg.lower().strip()
+    role_phrases=["نقش مترجم","نقش یک مترجم","نقش مترجم رو","مترجم من بشی","مترجم من باش","مترجمم بشی","مترجمم باش","مترجم باش","مترجم من باشی","بازی کن","ایفا کن","نقش رو بازی","بیا مترجم","مترجمم میشی","مترجمم می‌شی","مترجم من میشی","مترجم من می‌شی","می‌خوام نقش","میخوام نقش","be my translator","play the role of a translator","play translator","act as translator","be my translator","будь переводчиком","сыграй роль переводчика"]
+    if any(p in m for p in role_phrases): return True
+    if m in ["مترجم باش","مترجمم شو","مترجم شو","مترجم من باش","مترجمم میشی"]: return True
+    return False
+
+def is_real_translate_request(msg):
+    if is_translator_role_request(msg): return False
+    m=msg.lower().strip()
+    if m in ["ترجمه کن","ترجمش کن","translate","ترجمه"]: return False
+    if any(k in m for k in ["ترجمه کن","ترجمش کن","به انگلیسی بگو","به روسی بگو","به فارسی بگو","translate this","переведи"]):
+        cleaned=m.replace("ترجمه کن","").replace("ترجمش کن","").replace("translate","").replace("ترجمه","").strip()
+        # اگه بعد از دستور، متن واقعی هست -> ترجمه واقعیه
+        # اگه فقط «به روسی ترجمه کن» بدون متن -> نیست، باید بپرسه چی رو ترجمه کنم
+        # پس چک می‌کنیم آیا بعد از حذف کلمات دستور، متن قابل ترجمه مونده یا نه
+        for w in ["به انگلیسی بگو","به روسی بگو","به فارسی بگو","به ترکی بگو","به عربی بگو","به آلمانی بگو","این جمله را","این جمله رو","اینو","این رو"]:
+            cleaned=cleaned.replace(w,"").strip()
+        cleaned=cleaned.replace(":","").strip()
+        if len(cleaned)>2: return True
+        return False
+    return False
+
 def is_translation_request(msg):
     m=msg.lower().strip()
+    if is_translator_role_request(msg): return True
     if any(k in m for k in ["مترجم من باش","مترجم باش","بین ما ترجمه کن","ترجمه کن بین ما","be my translator","be our translator","translate between us","будь переводчиком","переводи между нами"]): return True
     if any(k in m for k in ["ترجمه کن","ترجمش کن","به انگلیسی بگو","به روسی بگو","به فارسی بگو","به ترکی بگو","به عربی بگو","به آلمانی بگو","translate","переведи","çevir"]): return True
     if any(k in m for k in ["او گفت","اون گفت","بهش بگو","بهش بگو که","tell him","tell her","скажи ему","скажи ей"]): return True
     return False
+
 def is_exit_translator(msg):
     m=(msg or "").lower().strip()
     return any(k in m for k in ["خاموش","بسه","تموم","تمام","برگرد","خروج","گپ بزنیم","مثل قبل","stop translating","turn off"])
@@ -343,18 +371,23 @@ def detect_target_lang_from_translate_msg(msg):
     if any(k in m for k in ["به قزاقی","to kazakh"]): return "kk"
     if any(k in m for k in ["به ازبکی","to uzbek"]): return "uz"
     return None
+
 def get_translator_reply(user_id,user_msg):
-    m=user_msg.lower()
+    # قدم 1 - اگه کاربر گفته نقش مترجم رو بازی کن: وارد حالت مترجم شو، اصلا ترجمه نکن
+    if is_translator_role_request(user_msg):
+        users_db.setdefault(str(user_id),{})["translator_soft"]=True; save_users(users_db)
+        lang=get_lang(user_id)
+        if lang=="ru":
+            return "Хорошо 😊 Я теперь твой переводчик.\n\nПрисылай текст когда захочешь, я переведу.\nНа какой язык переводить? Скажи например «на русский» или «на английский»."
+        if lang=="en":
+            return "Ok 😊 I'm your translator now.\n\nSend me the text whenever you want, I'll translate it for you.\nWhich language? Say e.g. «to Russian» or «to English»."
+        return "باشه 😊\n\nمتن رو بده و هر زمانی که دوست داری تا برات ترجمه‌اش کنم.\n\nبه چه زبانی ترجمه کنم؟ مثلا بگو «به روسی» یا «به انگلیسی»."
     if is_exit_translator(user_msg):
         users_db.get(str(user_id),{}).pop("translate_target",None); users_db.get(str(user_id),{})["translator_soft"]=False; save_users(users_db)
         return "باشه، مترجم رو خاموش کردم 😊 حالا مثل قبل باهام گپ بزن. چی کمکت کنم؟"
-    if any(k in m for k in ["مترجم من باش","مترجم باش","be my translator","будь переводчиком"]):
-        target=detect_target_lang_from_translate_msg(user_msg)
-        if target:
-            users_db.setdefault(str(user_id),{})["translate_target"]=target; users_db[str(user_id)]["translator_soft"]=True; save_users(users_db)
-            lang_names={"en":"انگلیسی / English","ru":"روسی / Русский","fa":"فارسی","tr":"ترکی / Türkçe","ar":"عربی","de":"آلمانی"}
-            return f"باشه 😊 از الان مترجمتم.\nتو به فارسی بگو، من به {lang_names.get(target,target)} ترجمه می‌کنم که بفرستی براش.\n\nهر وقت خواستی تمومش کنی بگو «خاموش» یا «بسه».\n\nحالا بگو چی می‌خوای بهش بگی؟"
-        return "باشه 😊 از الان مترجمتم.\nبگو به چه زبانی ترجمه کنم؟ مثلاً بگو «به روسی ترجمه کن» و بعد هر چی گفتی رو برات ترجمه می‌کنم."
+    # اگه فقط گفته «ترجمه کن» بدون متن - بپرس چی رو ترجمه کنم، ترجمه نکن
+    if user_msg.strip().lower() in ["ترجمه کن","ترجمش کن","translate","ترجمه","переведи"]:
+        return "باشه 😊 متن رو بده تا برات ترجمه‌اش کنم.\nبه چه زبانی؟ مثلا بگو «به روسی» یا «به انگلیسی»."
     target=detect_target_lang_from_translate_msg(user_msg)
     if not target: target=users_db.get(str(user_id),{}).get("translate_target","en")
     text_to_translate=user_msg
@@ -374,10 +407,13 @@ def get_translator_reply(user_id,user_msg):
 def detect_intent_now(msg, has_photo=False):
     m=(msg or "").lower().strip()
     if not m and not has_photo: return "chat"
+    # اول نقش مترجم - اصلا ترجمه نیست
+    if is_translator_role_request(msg):
+        return "translator_role"
     if any(k in m for k in ["فارکس فکتوری","forex factory","اخبار امروز","اخبار فارکس","تقویم اقتصادی","economic calendar","خبر امروز","اخبار بازار","اخبار روز","news today"]):
         return "forex_news"
     if any(k in m for k in ["لینک بده","لینک بفرست","لینکشو بده","لینک میخوام","لینک خرید","لینک مستقیم","از کجا بخرم","give link","send link","link please","لپ تاپ","لپتاپ","گوشی بخرم"]):
-        if m.startswith("ترجمه") or "ترجمه کن:" in m or "به روسی بگو" in m or "به انگلیسی بگو" in m:
+        if is_real_translate_request(msg):
             return "translate_text"
         return "link_request"
     if has_photo:
@@ -391,7 +427,11 @@ def detect_intent_now(msg, has_photo=False):
     if any(k in m for k in ["ترجمه کن","ترجمش کن","به انگلیسی بگو","به روسی بگو","به فارسی بگو","به ترکی بگو","به عربی بگو","translate","переведи","بهش بگو","او گفت","اون گفت","مترجم","translator"]):
         if any(k in m for k in ["خاموش","بسه","تموم","برگرد","خروج"]):
             return "chat"
-        return "translate_text"
+        # فقط اگه متن واقعی برای ترجمه داده، ترجمه کن
+        if is_real_translate_request(msg) or "بهش بگو" in m or "او گفت" in m or "اون گفت" in m:
+            return "translate_text"
+        # فقط گفته «ترجمه کن» یا «مترجم» بدون متن -> برو به نقش مترجم
+        return "translator_role"
     if any(k in m for k in ["سیگنال","signal","ترید","بازار","بیت","اتریوم","لوریج"]):
         return "trade_talk"
     if any(k in m for k in ["ثبت نام","register","گروه","عضو شم"]):
@@ -859,6 +899,10 @@ async def handle_text(update:Update,context:ContextTypes.DEFAULT_TYPE):
             if age>300: del pending_photo[user.id]
         except: pass
     intent=detect_intent_now(msg, has_photo=False)
+    if intent=="translator_role":
+        r=get_translator_reply(user.id,msg)
+        if r: await update.message.reply_text(r,reply_markup=kb)
+        return
     if intent=="forex_news":
         await update.message.reply_text("⏳ دارم اخبار امروز فارکس فکتوری رو چک می‌کنم...",reply_markup=kb)
         news=get_forex_factory_news()
@@ -877,10 +921,6 @@ async def handle_text(update:Update,context:ContextTypes.DEFAULT_TYPE):
         else: txt="Here is direct link 👇\n\n"+"\n".join(links)
         await update.message.reply_text(txt,reply_markup=kb); return
     if intent=="translate_text":
-        if "مترجم بین" in msg or "مترجم من باش" in msg or "مترجم باش" in msg:
-            users_db.setdefault(str(user.id),{})["translator_soft"]=True; save_users(users_db)
-            await update.message.reply_text("باشه 😊 از الان مترجم بین شما دو نفرم.\nتو بگو، من ترجمه می‌کنم که بفرستی براش.\n\nوسطش هر چی دیگه خواستی (لینک، اخبار، بازار) بگو، انجام میدم، بعدش بگو «ترجمه کن» دوباره برمی‌گردیم به ترجمه.\n\nحالا بگو چی می‌خوای بهش بگی؟",reply_markup=kb)
-            return
         r=get_translator_reply(user.id,msg)
         if r: await update.message.reply_text(r,reply_markup=kb); return
         if users_db.get(str(user.id),{}).get("translator_soft"):
@@ -917,6 +957,16 @@ async def handle_text(update:Update,context:ContextTypes.DEFAULT_TYPE):
         if img: await context.bot.send_photo(chat_id=update.effective_chat.id,photo=BytesIO(img),caption="بفرما 😊")
         else: await update.message.reply_text("نتونستم عکس رو بسازم 😅 دوباره با یه جمله واضح‌تر بگو",reply_markup=kb)
         return
+    # اگه حالت مترجم روشنه و کاربر یه متن عادی فرستاده (نه دستور دیگه) -> ترجمه کن
+    if users_db.get(str(user.id),{}).get("translator_soft") and len(msg.strip())>2 and intent in ["chat","trade_talk","register_talk"]:
+        # ولی اگه داشت در مورد ترید / گروه حرف می‌زد، ترجمه نکن
+        if intent=="chat":
+            target=users_db.get(str(user.id),{}).get("translate_target","en")
+            target_name={"en":"English","ru":"Russian","fa":"Persian","tr":"Turkish"}.get(target,"English")
+            try:
+                translated=generate_with_fallback([f"Translate to {target_name}. Output ONLY translation. Text:\n{msg}"])
+                await update.message.reply_text(f"🌐 {translated.strip()}\n\n👆 کپی کن بفرست براش",reply_markup=kb); return
+            except: pass
     if intent in ["trade_talk","register_talk","chat"]:
         reply=get_chat_reply(user.id,user.first_name,msg)
         if reply: await update.message.reply_text(reply,reply_markup=kb)
@@ -1090,7 +1140,18 @@ async def handle_voice(update:Update,context:ContextTypes.DEFAULT_TYPE):
             print("voice transcribe error:",e); user_text=""
         if not user_text:
             await update.message.reply_text("صدات رو واضح نشنیدم 😅 دوباره بگو؟",reply_markup=kb); return
+        # فیکس مترجم برای ویس: اول نقش مترجم رو چک کن
+        if is_translator_role_request(user_text):
+            r=get_translator_reply(user.id,user_text)
+            ok=await send_voice_reply(context,update.effective_chat.id,r,lang=get_lang(user.id))
+            if not ok: await update.message.reply_text(f"🎤 شنیدم گفتی: {user_text}\n\n{r}",reply_markup=kb)
+            return
         intent=detect_intent_now(user_text, has_photo=False)
+        if intent=="translator_role":
+            r=get_translator_reply(user.id,user_text)
+            ok=await send_voice_reply(context,update.effective_chat.id,r,lang=get```python
+            if not ok: await update.message.reply_text(f"🎤 شنیدم گفتی: {user_text}\n\n{r}",reply_markup=kb)
+            return
         if intent=="forex_news":
             news=get_forex_factory_news() or get_forex_news_with_ai()
             if news: await update.message.reply_text(news,reply_markup=kb)
@@ -1106,6 +1167,14 @@ async def handle_voice(update:Update,context:ContextTypes.DEFAULT_TYPE):
                 ok=await send_voice_reply(context,update.effective_chat.id,r,lang=get_lang(user.id))
                 if not ok: await update.message.reply_text(f"🎤 شنیدم گفتی: {user_text}\n\n{r}",reply_markup=kb)
                 return
+        # اگه حالت مترجم روشنه و ویس یه متن عادیه -> ترجمه کن، نه گپ
+        if users_db.get(str(user.id),{}).get("translator_soft") and intent=="chat" and len(user_text.strip())>2:
+            target=users_db.get(str(user.id),{}).get("translate_target","en")
+            target_name={"en":"English","ru":"Russian","fa":"Persian","tr":"Turkish"}.get(target,"English")
+            try:
+                translated=generate_with_fallback([f"Translate to {target_name}. Output ONLY translation. Text:\n{user_text}"])
+                await update.message.reply_text(f"🎤 شنیدم گفتی: {user_text}\n\n🌐 {translated.strip()}\n\n👆 کپی کن بفرست براش",reply_markup=kb); return
+            except: pass
         if user.id in pending_photo and user_text.lower().strip() in ["ترجمه","ترجمه کن","translate"]:
             photo_id=pending_photo[user.id]["photo_id"]; del pending_photo[user.id]
             try:
@@ -1163,7 +1232,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,handle_text))
     app.add_handler(ChatJoinRequestHandler(on_chat_join_request))
     app.add_handler(ChatMemberHandler(on_chat_member,ChatMemberHandler.CHAT_MEMBER))
-    print("Rahavard is running... ✅ SLIDING KEYBOARD + VIDEO")
+    print("Rahavard is running... ✅ SLIDING KEYBOARD + VIDEO + TRANSLATOR FIX")
     app.run_polling(drop_pending_updates=True)
 
 if __name__=="__main__":

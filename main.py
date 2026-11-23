@@ -162,19 +162,56 @@ async def generate_image_bytes(prompt_text):
 def is_photo_edit_request(msg):
     if not msg: return False
     m = msg.lower()
-    kws = ["ادیت کن", "ادیتش کن", "ویرایش کن", "عوض کن", "تغییر بده", "حذف کن", "پاک کن", "سیاه سفید", "سیاه‌سفید", "پس زمینه", "پس‌زمینه", "بک گراند", "آسمون رو", "آسمان رو", "لباسم رو", "موهام رو", "صورت رو", "روشن تر", "تیره تر", "رنگی کن", "کارتونی کن", "انیمه کن", "edit this", "edit photo", "change background", "remove", "make it", "düzenle", "değiştir", "arka plan", "отредактируй", "измени фон", "удали", "сделай черно-белым"]
+    if any(k in m for k in ["به انگلیسی بگو", "به انگلیسی ترجمه", "translate", "ترجمه کن", "به روسی بگو", "به فارسی بگو"]):
+        if m.strip().startswith("این جمله") or "ترجمه" in m or "به انگلیسی" in m:
+            return False
+    kws = [
+        "ادیت کن", "ادیتش کن", "ویرایش کن", "عوض کن", "تغییر بده", "حذف کن", "پاک کن",
+        "سیاه سفید", "سیاه‌سفید", "پس زمینه", "پس‌زمینه", "پسزمینه", "بک گراند", "background",
+        "make the background", "change background", "make background",
+        "آسمون رو", "آسمان رو", "لباسم رو", "موهام رو", "صورت رو",
+        "روشن تر", "تیره تر", "رنگی کن", "کارتونی کن", "انیمه کن",
+        "دریا کن", "دریا بشه", "ساحل کن", "make it sea", "make the sea",
+        "edit this", "edit photo", "edit", "remove", "make it",
+        "düzenle", "değiştir", "arka plan",
+        "отредактируй", "измени фон", "удали", "сделай черно-белым"
+    ]
     return any(k in m for k in kws)
 
 async def edit_image_bytes(photo_bytes, edit_prompt):
     try:
+        if re.search(r'[\u0600-\u06FF]', edit_prompt):
+            if "پس" in edit_prompt and "دریا" in edit_prompt:
+                edit_prompt_en = "Change the background to a beautiful sea beach, keep all people exactly the same, same faces, same clothes, same pose"
+            elif "سیاه سفید" in edit_prompt or "سیاه‌سفید" in edit_prompt:
+                edit_prompt_en = "Make this photo black and white, keep everything else same"
+            elif "حذف" in edit_prompt or "پاک کن" in edit_prompt:
+                edit_prompt_en = f"Edit this photo: {edit_prompt} - remove the mentioned object/person, fill background naturally"
+            else:
+                try:
+                    edit_prompt_en = generate_with_fallback([f"Translate this photo edit instruction to English, short and clear, for an image editing model. Output ONLY English: {edit_prompt}"])
+                except:
+                    edit_prompt_en = edit_prompt
+        else:
+            edit_prompt_en = edit_prompt
+        print(f"EDIT prompt original: {edit_prompt} -> EN: {edit_prompt_en}")
         img_part = genai.types.Part.from_bytes(data=bytes(photo_bytes), mime_type="image/jpeg")
-        resp = client.models.generate_content(model="gemini-2.5-flash-image", contents=[f"Edit this image: {edit_prompt}. Keep the person / main subject exactly the same face, same clothes, same pose, unless user asked to change it. High quality, realistic.", img_part])
+        resp = client.models.generate_content(
+            model="gemini-2.5-flash-image",
+            contents=[f"Edit this image: {edit_prompt_en}. Keep all people exactly the same face, same clothes, same pose, same position. Only change what user asked. High quality, realistic, photorealistic.", img_part]
+        )
         for part in resp.candidates[0].content.parts:
             if getattr(part, "inline_data", None):
+                print("EDIT success - got image bytes")
                 return part.inline_data.data
+            if getattr(part, "text", None):
+                print(f"EDIT model said text instead of image: {part.text[:200]}")
+        print("EDIT failed - no image in response")
+        return None
     except Exception as e:
         print("image edit error:", e)
-    return None
+        import traceback; traceback.print_exc()
+        return None
 
 def is_image_request(msg):
     m = msg.lower()
@@ -322,6 +359,80 @@ def is_exchange_question(msg):
     m = msg.lower()
     kws = ["این چه صرافیه", "این صرافی چیه", "صرافی چیه", "truetrade چیه", "true trade چیه", "the true trade چیه", "این چه صرافی هست", "what is this exchange", "what is truetrade", "what is true trade", "что это за биржа", "что такое truetrade", "что такое the true trade"]
     return any(k in m for k in kws)
+
+# === مترجم ===
+def is_translation_request(msg):
+    m = msg.lower().strip()
+    if any(k in m for k in ["مترجم من باش", "مترجم باش", "بین ما ترجمه کن", "ترجمه کن بین ما", "be my translator", "be our translator", "translate between us", "будь переводчиком", "переводи между нами"]):
+        return True
+    if any(k in m for k in ["ترجمه کن", "ترجمش کن", "به انگلیسی بگو", "به روسی بگو", "به فارسی بگو", "به ترکی بگو", "به عربی بگو", "به آلمانی بگو", "translate", "переведи", "çevir"]):
+        return True
+    if any(k in m for k in ["او گفت", "اون گفت", "بهش بگو", "بهش بگو که", "tell him", "tell her", "скажи ему", "скажи ей"]):
+        return True
+    return False
+
+def detect_target_lang_from_translate_msg(msg):
+    m = msg.lower()
+    if any(k in m for k in ["به انگلیسی", "to english", "in english", "на английский", "ingilizce"]): return "en"
+    if any(k in m for k in ["به روسی", "to russian", "in russian", "на русский", "rusça"]): return "ru"
+    if any(k in m for k in ["به فارسی", "to persian", "to farsi", "in persian", "на персидский", "farsça"]): return "fa"
+    if any(k in m for k in ["به ترکی", "to turkish", "in turkish", "на турецкий", "türkçe"]): return "tr"
+    if any(k in m for k in ["به عربی", "to arabic", "на арабский"]): return "ar"
+    if any(k in m for k in ["به آلمانی", "to german", "на немецкий"]): return "de"
+    if any(k in m for k in ["به فرانسوی", "to french"]): return "fr"
+    if any(k in m for k in ["به اسپانیایی", "to spanish"]): return "es"
+    if any(k in m for k in ["به قزاقی", "to kazakh"]): return "kk"
+    if any(k in m for k in ["به ازبکی", "to uzbek"]): return "uz"
+    return None
+
+def get_translator_reply(user_id, user_msg):
+    m = user_msg.lower()
+    if any(k in m for k in ["مترجم من باش", "مترجم باش", "be my translator", "будь переводчиком"]):
+        set_topic(user_id, "translator")
+        target = detect_target_lang_from_translate_msg(user_msg)
+        if target:
+            users_db.setdefault(str(user_id), {})["translate_target"] = target; save_users(users_db)
+            lang_names = {"en": "انگلیسی / English", "ru": "روسی / Русский", "fa": "فارسی", "tr": "ترکی / Türkçe", "ar": "عربی", "de": "آلمانی"}
+            return f"باشه 😊 از الان مترجمتم.\nتو به فارسی بگو، من به {lang_names.get(target, target)} ترجمه می‌کنم که بفرستی براش.\n\nهر وقت خواستی تمومش کنی بگو «مترجم رو خاموش کن».\n\nحالا بگو چی می‌خوای بهش بگی؟"
+        return "باشه 😊 از الان مترجمتم.\nبگو به چه زبانی ترجمه کنم؟ مثلاً بگو «به روسی ترجمه کن» و بعد هر چی گفتی رو برات ترجمه می‌کنم."
+    if any(k in m for k in ["مترجم رو خاموش", "ترجمه رو خاموش", "stop translating", "stop translator", "خاموش کن مترجم"]):
+        set_topic(user_id, "onboarding")
+        users_db.get(str(user_id), {}).pop("translate_target", None); save_users(users_db)
+        return "باشه، مترجم رو خاموش کردم 😊 حالا مثل قبل باهام گپ بزن."
+    target = detect_target_lang_from_translate_msg(user_msg)
+    if not target:
+        target = users_db.get(str(user_id), {}).get("translate_target", "en")
+    text_to_translate = user_msg
+    for prefix in ["این جمله را به انگلیسی بگو:", "این جمله را به انگلیسی بگو", "این جمله رو به انگلیسی بگو", "به انگلیسی بگو", "به روسی بگو", "به فارسی بگو", "به ترکی بگو", "ترجمه کن", "ترجمش کن", "translate this", "translate", "переведи", "بهش بگو", "بهش بگو که", "او گفت:", "اون گفت:"]:
+        if prefix in text_to_translate:
+            text_to_translate = text_to_translate.replace(prefix, "").strip()
+            break
+    if not text_to_translate or len(text_to_translate) < 2:
+        users_db.setdefault(str(user_id), {})["translate_target"] = target; save_users(users_db)
+        set_topic(user_id, "translator")
+        lang_names = {"en": "انگلیسی", "ru": "روسی", "fa": "فارسی", "tr": "ترکی"}
+        return f"باشه، از الان هر چی بگی رو به {lang_names.get(target, target)} ترجمه می‌کنم 😊\nبگو چی می‌خوای بگی؟"
+    target_name = {"en": "English", "ru": "Russian", "fa": "Persian (Farsi)", "tr": "Turkish", "ar": "Arabic", "de": "German", "fr": "French", "es": "Spanish", "kk": "Kazakh", "uz": "Uzbek"}.get(target, "English")
+    try:
+        prompt = f"""You are a professional translator. Translate the following text to {target_name}.
+Rules:
+- Output ONLY the translation, no explanation, no extra words.
+- Keep the tone: if it's informal / friendly, keep it informal. If it's formal, keep it formal.
+- Keep emojis if any.
+- If text is "پس‌زمینه رو دریا کن" -> "Make the background the sea" (not "Make the background sea")
+- If text is a question, keep it as a question.
+Text to translate:
+{text_to_translate}
+Translation in {target_name}:"""
+        translated = generate_with_fallback([prompt]).strip()
+        if get_topic(user_id) == "translator" or "بهش بگو" in m or "او گفت" in m:
+            return f"📝 تو گفتی:\n{text_to_translate}\n\n🌐 ترجمه ({target_name}):\n{translated}\n\n👆 این رو کپی کن بفرست براش"
+        add_to_history(user_id, "user", user_msg)
+        add_to_history(user_id, "bot", translated)
+        return translated
+    except Exception as e:
+        print("translate error:", e)
+        return None
 
 def detect_topic(msg):
     m = msg.lower()
@@ -505,13 +616,24 @@ def get_chat_prompt(lang, user_name, status, history_text, user_msg, preview_det
     * NEVER invent a 'previous quiz'. Only refer to quiz if it is in CONVERSATION HISTORY above.
     * NEVER repeat same 3 words. Each lesson must be NEW words.
 """
+    elif topic == "translator":
+        topic_rule = "\n- USER IS IN TRANSLATOR MODE. You are a translator between two people. Translate exactly what user says, keep tone, output ONLY translation + original for copy. Do NOT add trading/group talk.\n"
     elif topic == "ask_group":
         topic_rule = "\n- USER ASKED ABOUT GROUP HIMSELF - NOW you are ALLOWED to introduce group.\n- Say: group of people who beside their main job make daily profit from crypto markets. Ask: 'Do you want me to tell you how you can join?'\n- Do NOT send referral link yet. Only if user says 'yes / tell me / چجوری عضو شم' then send referral link + steps.\n"
     elif topic == "register":
         topic_rule = f"\n- USER IS IN REGISTRATION FLOW. Now you CAN talk about registration.\n- Referral link: {REFERRAL_LINK}\n- Steps: 1) Register with link 2) Come back and press 'I Registered' 3) Admin checks.\n- If user is stuck, ask for screenshot: 'Send screenshot, let me see where you are stuck'.\n"
     else:
         topic_rule = "- Topic is trade. You can talk about trading, but be complete and practical."
-    style_rule = "- STYLE - LIKE META AI: Warm, human, conversational, like a smart friend on Telegram. No robotic, dry sentences. No cliche phrases like 'As an AI'. Vary sentence length. Use 'we / let's' naturally. Be familiar without being over-familiar."
+    style_rule = """- STYLE - LIKE META AI: Warm, human, conversational, like a smart friend on Telegram. No robotic, dry sentences. No cliche phrases like 'As an AI'. Vary sentence length. Use 'we / let's' naturally. Be familiar without being over-familiar.
+- HONESTY - HARD RULE, NEVER BREAK - THIS IS CRITICAL:
+    * NEVER say "عکست رو یادمه / توی سیستمم ذخیره شده / عکس رو دارم" - You DO NOT store photos. If user asks about a photo, say honestly: "عکس رو ندارم، دوباره بفرستش"
+    * NEVER say "دارم روش کار می‌کنم / در حال پردازشه / سیستم داره روش کار می‌کنه" - There is NO background processing. Either you send result NOW or you failed.
+    * NEVER say "به زودی فعال میشه / به محض آماده شدن می‌فرستم / چند لحظه دیگه صبر کن تا بفرستم" - You NEVER send messages later by yourself. NEVER promise future delivery.
+    * NEVER invent a future feature: "ابزار ادیت به زودی فعال میشه" is FORBIDDEN.
+    * If photo edit failed, say ONLY: "نتونستم ادیت کنم، عکس رو دوباره با همون جمله بفرست" - Do NOT make up a story about why.
+    * If you don't know, say "نمی‌دونم" - Do NOT invent.
+    * If user says "هنوز منتظر اون عکسم / عکس چی شد؟ / کو عکس؟" - Do NOT say "یادمه / دارم روش کار می‌کنم". Say EXACTLY: "راستش عکس رو ندارم، چون عکس‌ها ذخیره نمیشن. همون عکس رو دوباره بفرست با کپشن «پس‌زمینه رو دریا کن» تا همین الان ادیتش کنم."
+"""
     return f"""You are Rahavard, a friendly human-like assistant on Telegram. Your name is Rahavard.
 USER INFO:
 - Name: {user_name}
@@ -567,7 +689,7 @@ def get_chat_reply(user_id, user_name, user_msg):
         if last_topic in ["no_trade", "english_general"] and new_topic == "trade": topic = last_topic
         else: set_topic(user_id, new_topic); topic = new_topic
     else: topic = last_topic
-    preview_detail = "" if topic in ["onboarding", "casual", "no_trade", "english_general"] else (get_preview_text(lang, detailed=False) or "")
+    preview_detail = "" if topic in ["onboarding", "casual", "no_trade", "english_general", "translator"] else (get_preview_text(lang, detailed=False) or "")
     colloquial = is_colloquial_msg(user_msg)
     prompt = get_chat_prompt(lang, user_name, status, history_text, user_msg, preview_detail, topic, colloquial, has_history=has_history)
     try:
@@ -815,10 +937,8 @@ async def preview_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(f"👀 امروز توی گروه:\n{preview}\n\n🔗 ثبت نام کن:\n{REFERRAL_LINK}", reply_markup=kb_now)
 async def send_reminders(context: ContextTypes.DEFAULT_TYPE):
-    # خاموش شد - تا وقتی کاربر خودش نخواد، یادآوری ثبت‌نام هم نمیفرستیم
     return
 async def send_daily_group_prompt(context: ContextTypes.DEFAULT_TYPE):
-    # خاموش شد - تا وقتی کاربر خودش نخواد، حرفی از گروه و ثبت‌نام نمیزنیم
     return
 
 async def send_as_signal(item, user, context):
@@ -903,6 +1023,30 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pending_items[user.id] = {"type": "text", "text": msg}
         await update.message.reply_text("این چیه؟ 👇", reply_markup=get_choice_keyboard()); return
     if msg.startswith("/"): return
+    # === مترجم - اول از همه ===
+    if get_topic(user.id) == "translator" or is_translation_request(msg):
+        if get_topic(user.id) == "translator" and not msg.startswith("/"):
+            reply = get_translator_reply(user.id, msg)
+            if reply:
+                await update.message.reply_text(reply)
+                return
+        elif is_translation_request(msg):
+            reply = get_translator_reply(user.id, msg)
+            if reply:
+                await update.message.reply_text(reply)
+                return
+    # === اگه کاربر دنبال عکس قبلیه - نذار Gemini دروغ بگه ===
+    low_pending = msg.lower()
+    if any(k in low_pending for k in ["عکس چی شد", "عکسم چی شد", "منتظر اون عکسم", "منتظر عکس هستم", "منتظر عکس", "کو عکس", "عکس رو نفرستادی", "پس عکس چی شد", "where is my photo", "where is photo", "i'm still waiting for photo", "жду фото", "где фото"]):
+        lang = get_lang(user.id)
+        if lang == "fa":
+            txt = "راستش رو بخوای، عکس رو ندارم 😅 عکس‌ها توی بات ذخیره نمیشن.\n\nهمون عکس رو دوباره همینجا بفرست و توی کپشن بنویس «پس‌زمینه رو دریا کن» یا «پس‌زمینه رو جنگل کن» تا همین الان ادیتش کنم و بفرستم."
+        elif lang == "ru":
+            txt = "Честно, фото у меня нет 😅 Фото в боте не сохраняются.\n\nПришли то же фото ещё раз и в подписи напиши «сделай фон морем» или «сделай фон лесом», я сразу отредактирую и пришлю."
+        else:
+            txt = "Honestly, I don't have the photo 😅 Photos are not saved in the bot.\n\nSend the same photo again here and write in caption «make background sea» or «make background forest» and I'll edit it right now and send it."
+        await update.message.reply_text(txt)
+        return
     if is_exchange_question(msg):
         lang = get_lang(user.id)
         await update.message.reply_text(EXCHANGE_INFO.get(lang, EXCHANGE_INFO["fa"]), reply_markup=get_keyboard_or_none(user.id, get_welcome_keyboard(user.id)))
@@ -1045,6 +1189,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 file = await context.bot.get_file(photo.file_id); photo_bytes = await file.download_as_bytearray()
                 edited = await edit_image_bytes(photo_bytes, caption)
+                if not edited:
+                    edited = await edit_image_bytes(photo_bytes, "Change the background to a beautiful sea beach")
                 if edited:
                     await context.bot.send_photo(chat_id=update.effective_chat.id, photo=BytesIO(edited), caption="بفرما، ادیت شد 😊")
                 else:
@@ -1064,6 +1210,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             file = await context.bot.get_file(photo.file_id); photo_bytes = await file.download_as_bytearray()
             edited = await edit_image_bytes(photo_bytes, caption)
+            if not edited:
+                print("EDIT retry with simple English prompt")
+                edited = await edit_image_bytes(photo_bytes, "Change the background to a beautiful sea beach")
             if edited:
                 if lang == "fa": cap = "بفرما، ادیت شد 😊\nاگه بازم تغییری می‌خوای، همین عکس رو با جمله جدید بفرست"
                 elif lang == "ru": cap = "Готово, отредактировано 😊\nЕсли нужно еще что-то изменить, пришли это фото с новым текстом"
@@ -1073,7 +1222,13 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 add_to_history(user.id, "user", f"[عکس برای ادیت فرستاد: {caption}]")
                 add_to_history(user.id, "bot", "[عکس ادیت شده فرستاده شد]")
             else:
-                await update.message.reply_text("نتونستم ادیت کنم 😅 دوباره با یه جمله واضح‌تر بگو، مثلاً «پس‌زمینه رو دریا کن»")
+                if lang == "fa":
+                    fail_txt = "نتونستم این بار ادیت کنم 😅 عکس رو دوباره بفرست با یه جمله ساده‌تر، مثلاً فقط بنویس «پس‌زمینه رو دریا کن»\n\nعکس‌ها ذخیره نمیشن، پس حتماً خود عکس رو دوباره بفرست."
+                elif lang == "ru":
+                    fail_txt = "Не смог отредактировать в этот раз 😅 Пришли фото ещё раз с простым текстом, например «сделай фон морем»"
+                else:
+                    fail_txt = "Couldn't edit this time 😅 Send the photo again with a simpler text, for example «make background sea»"
+                await update.message.reply_text(fail_txt)
         except Exception as e:
             print("photo edit error:", e)
             await update.message.reply_text("نتونستم ادیت کنم 😅 یه عکس واضح‌تر بفرست یا جمله رو ساده‌تر بگو")
@@ -1137,6 +1292,27 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         transcribed = transcribed.strip()
         if not transcribed or len(transcribed) < 2:
             await update.message.reply_text("صدات رو واضح نشنیدم 😅 یه بار دیگه، آروم‌تر بگو"); return
+        # اگه کاربر با ویس گفت "عکس چی شد؟" - مستقیم جواب درست رو بده
+        low_v = transcribed.lower()
+        if any(k in low_v for k in ["عکس چی شد", "عکسم چی شد", "منتظر اون عکسم", "منتظر عکس", "کو عکس", "عکس رو نفرستادی", "where is photo", "жду фото"]):
+            lang = get_lang(user.id)
+            if lang == "fa":
+                txt = "راستش عکس رو ندارم 😅 عکس‌ها ذخیره نمیشن. همون عکس رو دوباره بفرست با کپشن «پس‌زمینه رو دریا کن» تا همین الان ادیتش کنم."
+            elif lang == "ru":
+                txt = "Честно, фото у меня нет 😅 Пришли то же фото ещё раз с подписью «сделай фон морем», я сразу отредактирую."
+            else:
+                txt = "Honestly, I don't have the photo 😅 Send the same photo again with caption «make background sea» and I'll edit it right now."
+            ok = await send_voice_reply(context, update.effective_chat.id, txt, lang)
+            await update.message.reply_text(f"🎤 شنیدم گفتی: {transcribed}\n\n{txt}")
+            return
+        # مترجم با ویس
+        if get_topic(user.id) == "translator" or is_translation_request(transcribed):
+            reply = get_translator_reply(user.id, transcribed)
+            if reply:
+                lang = get_lang(user.id)
+                ok = await send_voice_reply(context, update.effective_chat.id, reply, lang)
+                await update.message.reply_text(f"🎤 شنیدم گفتی: {transcribed}\n\n{reply}")
+                return
         if is_admin(update):
             pending_items[user.id] = {"type": "text", "text": transcribed}
             await update.message.reply_text(f"🎤 شنیدم گفتی:\n{transcribed}\n\nاین چیه؟ 👇", reply_markup=get_choice_keyboard()); return
@@ -1265,6 +1441,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if data == "preview":
         lang = get_lang(user.id)
+        topicادامه کد از همون جایی که قطع شد 👇 این رو بچسبون به آخر کد قبلی:
+
+```python
         topic_now = get_topic(user.id)
         kb_now = get_keyboard_or_none(user.id, get_welcome_keyboard(user.id)) if topic_now in ["ask_group", "register"] else None
         sent = await send_preview_photos(context.bot, update.effective_chat.id, lang, kb_now)
@@ -1329,6 +1508,7 @@ async def handle_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE
     except: pass
     try: await context.bot.send_message(chat_id=user.id, text=t(user.id, "need_register", link=REFERRAL_LINK), reply_markup=get_keyboard_or_none(user.id, get_welcome_keyboard(user.id)))
     except: pass
+
 async def handle_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         m = update.chat_member

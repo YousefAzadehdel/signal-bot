@@ -131,6 +131,11 @@ async def edit_image_bytes(photo_bytes,edit_prompt):
 def is_image_request(msg):
     m=msg.lower(); return any(k in m for k in ["عکس بساز","عکس بکش","تصویر بساز","عکس درست کن","یه عکس","make an image","generate image","draw","сделай картинку","нарисуй"])
 # ===== FIX ویس: فقط 1 جمله 120 کاراکتری =====
+# --- FIX: این تابع نبود و باعث کرش عکس می‌شد ---
+def is_photo_edit_request(msg):
+    if not msg: return False
+    m = msg.lower()
+    return any(k in m for k in ["پس‌زمینه","پس زمینه","بک‌گراند","بک گراند","ادیت کن","ادیتش کن","تغییر بده","دریا کن","جنگل کن","make background","change background","edit this","background"])
 async def send_voice_reply(context,chat_id,text,lang="fa"):
     if not HAS_TTS: return False
     detected=detect_lang_from_msg(text)

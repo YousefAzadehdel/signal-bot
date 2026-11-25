@@ -958,6 +958,11 @@ async def handle_callback(update:Update,context:ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             await safe_edit(f"خطا در منسوخ کردن: {e}")
         return
+    if data=="choice_cancel":
+        if not is_admin(update): return
+        pending_items.pop(user.id,None)
+        await safe_edit("❌ لغو شد - هیچی توی گروه فرستاده نشد.")
+        return
     if data.startswith("choice_"):
         if not is_admin(update): return
         item=pending_items.get(user.id)

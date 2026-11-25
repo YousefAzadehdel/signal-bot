@@ -111,7 +111,7 @@ async def generate_image_bytes(prompt_text):
     except Exception as e: print("image gen error:",e)
     return None
 # PART 2 - خط 121 تا 240 - بچسبون به قسمت 1
-        async def edit_image_bytes(photo_bytes,edit_prompt):
+    async def edit_image_bytes(photo_bytes,edit_prompt):
     try:
         if re.search(r'[\u0600-\u06FF]',edit_prompt):
             if "پس" in edit_prompt and "دریا" in edit_prompt: edit_prompt_en="Change the background to a beautiful sea beach, keep all people exactly the same, same faces, same clothes, same pose"

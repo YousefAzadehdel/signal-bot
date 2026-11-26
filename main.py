@@ -1,4 +1,5 @@
 # main.py - Rahavard - FIXED 998 lines - PART 1 / 8
+import requests
 from flask import Flask
 import threading, os, re, json, datetime
 from io import BytesIO
@@ -95,15 +96,65 @@ def get_history_text(user_id,limit=50):
     return txt if txt else "(no history)"
 MODELS=["gemini-3.5-flash-lite","gemini-3.5-flash"]
 client=genai.Client(api_key=GEMINI_KEY)
+OPENROUTER_KEY=os.environ.get("OPENROUTER_API_KEY","")
+
+# --- Smart Router: انتخاب هوشمند بهترین AI ---
+def _call_openrouter_smart(prompt_text):
+    # تشخیص نوع کار
+    t = prompt_text.lower()
+    if any(w in t for w in ["کد","code","python","پایتون","ارور","error","bug","باگ","function","html","javascript"]):
+        models = ["deepseek/deepseek-chat-v3-0324:free", "qwen/qwen-2.5-coder-32b-instruct:free"]
+        intent = "coding"
+    elif any(w in t for w in ["بیت","btc","bitcoin","اتریوم","ترید","trade","چارت","سیگنال","بازار","کریپتو","فارکس","تحلیل"]):
+        models = ["openai/gpt-4o-mini", "google/gemini-2.0-flash-001"]
+        intent = "trading"
+    else:
+        models = ["meta-llama/llama-3.3-70b-instruct:free", "google/gemini-2.0-flash-001", "openai/gpt-4o-mini"]
+        intent = "chat"
+    print(f"[ROUTER] Intent: {intent}")
+    if not OPENROUTER_KEY:
+        return None
+    for m in models:
+        try:
+            r = requests.post("https://openrouter.ai/api/v1/chat/completions",
+                headers={"Authorization": f"Bearer {OPENROUTER_KEY}", "Content-Type": "application/json", "HTTP-Referer": "https://rahavard-bot.onrender.com", "X-Title": "RAHAVARD"},
+                json={"model": m, "messages": [{"role": "user", "content": prompt_text}], "max_tokens": 2000, "temperature": 0.7},
+                timeout=40)
+            if r.status_code == 200:
+                txt = r.json()["choices"][0]["message"]["content"]
+                if txt:
+                    print(f"[ROUTER] ✅ Used: {m}")
+                    return txt
+            else:
+                print(f"[ROUTER] Fail {m}: {r.status_code}")
+        except Exception as e:
+            print(f"[ROUTER] Error {m}: {e}")
+            continue
+    return None
+
 def generate_with_fallback(contents):
+    # contents میتونه لیست باشه، تبدیلش میکنیم به متن
+    if isinstance(contents, list):
+        prompt_text = "\n".join([str(c) for c in contents])
+    else:
+        prompt_text = str(contents)
+
+    # قدم ۱: اول سعی کن با بهترین AI هوشمند جواب بده (OpenRouter)
+    # برای عکس و کارهای خاص، اینو رد میکنیم چون prompt_text طولانیه
+    if len(prompt_text) < 8000 and "Summarize" not in prompt_text:
+        smart = _call_openrouter_smart(prompt_text)
+        if smart:
+            return smart
+        print("[ROUTER] OpenRouter failed, falling back to Gemini...")
+
+    # قدم ۲: اگه نشد، برگرد به روش قدیمی خودت (Gemini) - هیچی پاک نشده
     last=None
     for model in MODELS:
         try:
             resp=client.models.generate_content(model=model,contents=contents)
             if resp.text: return resp.text
         except Exception as e: last=e; print(f"Model {model} failed:",e); continue
-    raise last if last else Exception("All Gemini models failed")
-async def generate_image_bytes(prompt_text):
+    raise last if last else Exception("All Gemini models failed")async def generate_image_bytes(prompt_text):
     try:
         resp=client.models.generate_content(model="gemini-2.5-flash-image",contents=[f"Generate an image: {prompt_text}, high quality, detailed"])
         for part in resp.candidates[0].content.parts:

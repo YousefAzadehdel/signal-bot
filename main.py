@@ -21,7 +21,7 @@ def run_flask():
     flask_app.run(host='0.0.0.0', port=int(os.environ.get("PORT",10000)))
 BOT_TOKEN=os.environ.get("BOT_TOKEN","")
 GEMINI_KEY=os.environ.get("GEMINI_KEY","")
-GROUP_ID=-1004453681781
+GROUP_ID=-1005779452016
 ADMIN_IDS=[5386696088]
 REFERRAL_LINK="https://www.thetruetrade.io/r/37681671"
 GROUP_LINK="https://t.me/+oUUtnySqTnY1M2M6"

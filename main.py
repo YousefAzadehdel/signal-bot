@@ -215,7 +215,7 @@ async def send_voice_reply(context,chat_id,text,lang="fa"):
 </prosody>
 </voice>
 </speak>"""
-communicate = edge_tts.Communicate(ssml, "fa-IR-DilaraNeural")
+                communicate = edge_tts.Communicate(ssml, "fa-IR-DilaraNeural")
                 buf = BytesIO()
                 async for chunk in communicate.stream():
                     if chunk["type"] == "audio":

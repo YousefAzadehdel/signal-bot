@@ -207,8 +207,8 @@ async def send_voice_reply(context,chat_id,text,lang="fa"):
             try:
                 print(f"VOICE FA EDGE TRY: {short}")
                # برای لحن طبیعی‌تر فارسی - آروم‌تر و گرم‌تر
-safe = short.replace("&", "و").replace("<", "").replace(">", "")
-ssml = f"""<speak version="1.0" xml:lang="fa-IR">
+                safe = short.replace("&", "و").replace("<", "").replace(">", "")
+                ssml = f"""<speak version="1.0" xml:lang="fa-IR"
 <voice name="fa-IR-DilaraNeural">
 <prosody rate="-8%" pitch="+3%">
 {safe}

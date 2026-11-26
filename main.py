@@ -206,7 +206,16 @@ async def send_voice_reply(context,chat_id,text,lang="fa"):
         if lang=="fa":
             try:
                 print(f"VOICE FA EDGE TRY: {short}")
-                communicate = edge_tts.Communicate(short, "fa-IR-DilaraNeural")
+               # برای لحن طبیعی‌تر فارسی - آروم‌تر و گرم‌تر
+safe = short.replace("&", "و").replace("<", "").replace(">", "")
+ssml = f"""<speak version="1.0" xml:lang="fa-IR">
+<voice name="fa-IR-DilaraNeural">
+<prosody rate="-8%" pitch="+3%">
+{safe}
+</prosody>
+</voice>
+</speak>"""
+communicate = edge_tts.Communicate(ssml, "fa-IR-DilaraNeural")
                 buf = BytesIO()
                 async for chunk in communicate.stream():
                     if chunk["type"] == "audio":

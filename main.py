@@ -1,4 +1,5 @@
 # main.py - Rahavard - FIXED 998 lines - PART 1 / 8
+import edge_tts
 import requests
 from flask import Flask
 import threading, os, re, json, datetime

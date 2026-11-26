@@ -3,3 +3,4 @@ google-genai==1.30.0
 Flask==3.0.3
 python-dotenv==1.0.1
 gTTS==2.5.4
+edge-tts

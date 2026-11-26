@@ -190,10 +190,8 @@ def is_photo_edit_request(msg):
     m = msg.lower()
     return any(k in m for k in ["پس‌زمینه","پس زمینه","بک‌گراند","بک گراند","ادیت کن","ادیتش کن","تغییر بده","دریا کن","جنگل کن","make background","change background","edit this","background"])
 async def send_voice_reply(context,chat_id,text,lang="fa"):
-    if not HAS_TTS: return False
     detected=detect_lang_from_msg(text)
     if detected: lang=detected
-    tts_lang={"fa":"fa","en":"en","ru":"ru","tr":"tr","ar":"ar","de":"de","fr":"fr","es":"es","it":"it","kk":"kk","uz":"uz","uk":"uk","hi":"hi"}.get(lang,"en")
     try:
         clean=text.strip().replace("رهورد","رهاورد").replace("Rahord","Rahavard").replace("Рахорд","Рахавард")
         clean=re.sub(r'https?://\S+',' ',clean); clean=re.sub(r'[^\w\s\u0600-\u06FF\u0400-\u04FFa-zA-Z.,!?؟،\n]',' ',clean)
@@ -203,6 +201,26 @@ async def send_voice_reply(context,chat_id,text,lang="fa"):
         if not parts: return False
         short=parts[0][:120]
         if lang=="fa": short=short.replace("رهاورد","رها ورد")
+
+        # ===== فقط فارسی با edge-tts =====
+        if lang=="fa":
+            try:
+                print(f"VOICE FA EDGE TRY: {short}")
+                communicate = edge_tts.Communicate(short, "fa-IR-DilaraNeural")
+                buf = BytesIO()
+                async for chunk in communicate.stream():
+                    if chunk["type"] == "audio":
+                        buf.write(chunk["data"])
+                buf.seek(0)
+                await context.bot.send_voice(chat_id=chat_id, voice=buf)
+                print("VOICE FA EDGE OK")
+                return True
+            except Exception as e:
+                print("VOICE FA EDGE FAIL:", e)
+                return False
+
+        # ===== بقیه زبان ها مثل قبل با gTTS =====
+        tts_lang={"en":"en","ru":"ru","tr":"tr","ar":"ar","de":"de","fr":"fr","es":"es","it":"it","kk":"kk","uz":"uz","uk":"uk","hi":"hi"}.get(lang,"en")
         try:
             buf=BytesIO(); gTTS(text=short,lang=tts_lang,slow=False).write_to_fp(buf); buf.seek(0); await context.bot.send_voice(chat_id=chat_id,voice=buf); return True
         except Exception as e1:
@@ -213,8 +231,7 @@ async def send_voice_reply(context,chat_id,text,lang="fa"):
                     buf2=BytesIO(); gTTS(text=first,lang=tts_lang,slow=False).write_to_fp(buf2); buf2.seek(0); await context.bot.send_voice(chat_id=chat_id,voice=buf2); return True
                 except Exception as e2: print("tts try2 failed:",e2)
             return False
-    except Exception as e: print("tts error:",e); return False
-def is_voice_request(msg):
+    except Exception as e: print("tts error:",e); return Falsedef is_voice_request(msg):
     m=msg.lower(); return any(k in m for k in ["ویس بفرست","ویس بگو","با صدا بگو","صدات رو بفرست","صوتی بگو","با ویس","send voice","voice message","отправь голосовое","скажи голосом","голосом"])
 def is_banned(uid): return str(uid) in banned_users
 def ban_user(uid):

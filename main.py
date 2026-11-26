@@ -154,7 +154,8 @@ def generate_with_fallback(contents):
             resp=client.models.generate_content(model=model,contents=contents)
             if resp.text: return resp.text
         except Exception as e: last=e; print(f"Model {model} failed:",e); continue
-    raise last if last else Exception("All Gemini models failed")async def generate_image_bytes(prompt_text):
+    raise last if last else Exception("All Gemini models failed")
+async def generate_image_bytes(prompt_text):
     try:
         resp=client.models.generate_content(model="gemini-2.5-flash-image",contents=[f"Generate an image: {prompt_text}, high quality, detailed"])
         for part in resp.candidates[0].content.parts:

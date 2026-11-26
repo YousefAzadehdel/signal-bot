@@ -230,7 +230,8 @@ async def send_voice_reply(context,chat_id,text,lang="fa"):
                     buf2=BytesIO(); gTTS(text=first,lang=tts_lang,slow=False).write_to_fp(buf2); buf2.seek(0); await context.bot.send_voice(chat_id=chat_id,voice=buf2); return True
                 except Exception as e2: print("tts try2 failed:",e2)
             return False
-    except Exception as e: print("tts error:",e); return Falsedef is_voice_request(msg):
+    except Exception as e: print("tts error:",e); return False
+    def is_voice_request(msg):
     m=msg.lower(); return any(k in m for k in ["ویس بفرست","ویس بگو","با صدا بگو","صدات رو بفرست","صوتی بگو","با ویس","send voice","voice message","отправь голосовое","скажи голосом","голосом"])
 def is_banned(uid): return str(uid) in banned_users
 def ban_user(uid):

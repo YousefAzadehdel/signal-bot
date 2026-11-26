@@ -203,19 +203,10 @@ async def send_voice_reply(context,chat_id,text,lang="fa"):
         if lang=="fa": short=short.replace("رهاورد","رها ورد")
 
         # ===== فقط فارسی با edge-tts =====
-        if lang=="fa":
+                if lang=="fa":
             try:
                 print(f"VOICE FA EDGE TRY: {short}")
-               # برای لحن طبیعی‌تر فارسی - آروم‌تر و گرم‌تر
-                safe = short.replace("&", "و").replace("<", "").replace(">", "")
-                ssml = f"""<speak version="1.0" xml:lang="fa-IR"
-<voice name="fa-IR-DilaraNeural">
-<prosody rate="-8%" pitch="+3%">
-{safe}
-</prosody>
-</voice>
-</speak>"""
-                communicate = edge_tts.Communicate(ssml, "fa-IR-DilaraNeural")
+                communicate = edge_tts.Communicate(short, "fa-IR-DilaraNeural")
                 buf = BytesIO()
                 async for chunk in communicate.stream():
                     if chunk["type"] == "audio":
@@ -227,7 +218,6 @@ async def send_voice_reply(context,chat_id,text,lang="fa"):
             except Exception as e:
                 print("VOICE FA EDGE FAIL:", e)
                 return False
-
         # ===== بقیه زبان ها مثل قبل با gTTS =====
         tts_lang={"en":"en","ru":"ru","tr":"tr","ar":"ar","de":"de","fr":"fr","es":"es","it":"it","kk":"kk","uz":"uz","uk":"uk","hi":"hi"}.get(lang,"en")
         try:

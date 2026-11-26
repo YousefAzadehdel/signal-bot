@@ -232,7 +232,7 @@ async def send_voice_reply(context,chat_id,text,lang="fa"):
             return False
     except Exception as e: print("tts error:",e); return False
     def is_voice_request(msg):
-    m=msg.lower(); return any(k in m for k in ["ویس بفرست","ویس بگو","با صدا بگو","صدات رو بفرست","صوتی بگو","با ویس","send voice","voice message","отправь голосовое","скажи голосом","голосом"])
+        m=msg.lower(); return any(k in m for k in ["ویس بفرست","ویس بگو","با صدا بگو","صدات رو بفرست","صوتی بگو","با ویس","send voice","voice message","отправь голосовое","скажи голосом","голосом"])
 def is_banned(uid): return str(uid) in banned_users
 def ban_user(uid):
     banned_users.add(str(uid)); save_banned()
